@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "figma-mcp-free": {
+      "transport": "stdio",
+      "command": "node",
+      "args": ["./packages/mcp-server/dist/index.js"]
+    }
+  }
+}
+

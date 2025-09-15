@@ -1,0 +1,29 @@
+現在進行形の事例
+
+Docker Desktop
+
+エンジンはオープン → 企業利用は有料
+代替: Podman, Rancher Desktop
+
+
+Elasticsearch → Elastic License
+
+検索エンジンはオープン → 一部機能有料化
+代替: OpenSearch (AWS主導)
+
+
+Terraform → HashiCorp License
+
+IaCツールをクローズド化
+代替: OpenTofu (Linux Foundation)
+
+
+MongoDB → SSPL License
+
+クラウド提供を制限
+代替: FerretDB, DocumentDB
+
+Supabaseについて言えば、本当にひどいですよね：
+PostgreSQL(完全無料) + PostgREST(無料) + Realtime(無料)
+= Supabase(月額20ドル～)
+この**「無料技術の寄せ集めを有料化」**パターンは完全に搾取構造です。

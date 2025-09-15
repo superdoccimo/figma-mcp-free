@@ -1,0 +1,14 @@
+{
+  "name": "@figma-mcp-free/config",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^18",
+    "typescript": "^5.4"
+  }
+}
+

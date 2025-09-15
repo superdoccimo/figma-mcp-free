@@ -1,0 +1,25 @@
+{
+  "name": "figma-mcp-free",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "figma-mcp-free": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p .",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@figma-mcp-free/code-generator": "workspace:*",
+    "@figma-mcp-free/design-tokens": "workspace:*",
+    "@figma-mcp-free/figma-client": "workspace:*",
+    "@figma-mcp-free/config": "workspace:*",
+    "commander": "^12"
+  },
+  "devDependencies": {
+    "@types/node": "^18",
+    "typescript": "^5.4",
+    "tsx": "^4"
+  }
+}

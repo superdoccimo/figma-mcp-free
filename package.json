@@ -1,0 +1,13 @@
+{
+  "name": "figma-mcp-free",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "echo 'build: run pnpm -r build after installing deps'",
+    "dev": "echo 'dev: run package-specific dev after installing deps'"
+  }
+}
+

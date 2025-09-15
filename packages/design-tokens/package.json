@@ -1,0 +1,13 @@
+{
+  "name": "@figma-mcp-free/design-tokens",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^18",
+    "typescript": "^5.4"
+  }
+}
