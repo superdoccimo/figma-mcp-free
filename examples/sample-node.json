@@ -1,0 +1,14 @@
+{
+  "id": "1:2",
+  "name": "Demo Text",
+  "type": "TEXT",
+  "characters": "Hello Figmas!",
+  "absoluteBoundingBox": { "width": 200, "height": 40 },
+  "fills": [ { "type": "SOLID", "color": { "r": 0.07, "g": 0.13, "b": 0.2, "a": 1 } } ],
+  "fontFamily": "Inter",
+  "fontSize": 20,
+  "lineHeightPx": 24,
+  "letterSpacing": 0,
+  "fontWeight": 600
+}
+

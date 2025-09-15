@@ -1,5 +1,23 @@
 # figma-mcp-free
 
+![CI](https://github.com/superdoccimo/figma-mcp-free/actions/workflows/ci.yml/badge.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+Quick Start (from clone)
+- Star this repo to support the project!
+- Clone: `git clone https://github.com/superdoccimo/figma-mcp-free.git`
+- Install: `cd figma-mcp-free && pnpm install && pnpm -r build`
+- Set token: `pnpm --filter figma-mcp-free dev -- config set token <FIGMA_TOKEN>`
+- Find components: `pnpm --filter figma-mcp-free dev -- components <FILE_ID> --query Button --limit 5`
+- Generate (no tokens): `pnpm --filter figma-mcp-free dev -- generate <FILE_ID> <NODE_ID> --framework react > out-no-tokens.jsx`
+- Export tokens: `pnpm --filter figma-mcp-free dev -- export-tokens <FILE_ID> > tokens.json`
+- Generate (with tokens): `pnpm --filter figma-mcp-free dev -- generate <FILE_ID> <NODE_ID> --framework react --use-tokens ./tokens.json > out-with-tokens.jsx`
+
+Demo scripts
+- `./scripts/demo.sh` runs the above end-to-end. Requires env: `FIGMA_TOKEN`, `FILE_ID`, `NODE_ID`.
+- Offline fallback: `pnpm --filter figma-mcp-free dev -- generate-from-json ./examples/sample-node.json --framework react --use-tokens ./examples/sample-tokens.json`
+
 Free, open MCP server alternative to Figma Dev Mode.
 
 - Protocol: MCP STDIO

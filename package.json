@@ -8,6 +8,13 @@
   "scripts": {
     "build": "echo 'build: run pnpm -r build after installing deps'",
     "dev": "echo 'dev: run package-specific dev after installing deps'"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/superdoccimo/figma-mcp-free.git"
+  },
+  "bugs": {
+    "url": "https://github.com/superdoccimo/figma-mcp-free/issues"
+  },
+  "homepage": "https://github.com/superdoccimo/figma-mcp-free#readme"
 }
-

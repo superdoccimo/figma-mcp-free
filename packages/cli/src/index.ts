@@ -4,6 +4,7 @@ import { getConfigPath, readConfig, writeConfig, getToken as getCfgToken } from 
 import { FigmaClient } from "@figma-mcp-free/figma-client";
 import { toDesignTokens } from "@figma-mcp-free/design-tokens";
 import { generateCode, type Framework } from "@figma-mcp-free/code-generator";
+import { readFileSync } from "node:fs";
 
 const program = new Command();
 program
@@ -37,8 +38,7 @@ program.command("generate")
     let varOpts: any;
     if (opts.useTokens) {
       try {
-        const fs = await import("node:fs");
-        const txt = fs.readFileSync(opts.useTokens, "utf8");
+        const txt = readFileSync(opts.useTokens, "utf8");
         const json = JSON.parse(txt);
         const { buildCssVarIndex, buildTypographyVarIndex, buildSizeSpacingVarIndex, buildShadowVarIndex, shadowKey, normalizeHex } = await import("@figma-mcp-free/design-tokens");
         const idx = buildCssVarIndex(json, { prefix: opts.varPrefix ?? "--" });
@@ -67,6 +67,47 @@ program.command("generate")
       opts.framework,
       { colorVar, ...(varOpts || {}) }
     );
+    console.log(code);
+  });
+
+program.command("generate-from-json")
+  .description("Generate code from a local node JSON (offline demo)")
+  .argument("<nodeJsonPath>")
+  .option("--framework <name>", "react|vue|svelte|html", "react")
+  .option("--use-tokens <path>", "use W3C tokens JSON to substitute colors with CSS variables")
+  .option("--var-prefix <prefix>", "CSS var prefix (default --)")
+  .action(async (nodeJsonPath: string, opts: { framework: Framework; useTokens?: string; varPrefix?: string }) => {
+    const raw = readFileSync(nodeJsonPath, "utf8");
+    const node = JSON.parse(raw);
+    let colorVar: ((hex: string) => string | undefined) | undefined;
+    let varOpts: any;
+    if (opts.useTokens) {
+      try {
+        const txt = readFileSync(opts.useTokens, "utf8");
+        const json = JSON.parse(txt);
+        const { buildCssVarIndex, buildTypographyVarIndex, buildSizeSpacingVarIndex, buildShadowVarIndex, shadowKey, normalizeHex } = await import("@figma-mcp-free/design-tokens");
+        const idx = buildCssVarIndex(json, { prefix: opts.varPrefix ?? "--" });
+        const tdx = buildTypographyVarIndex(json, { prefix: opts.varPrefix ?? "--" });
+        const sdx = buildSizeSpacingVarIndex(json, { prefix: opts.varPrefix ?? "--" });
+        const shx = buildShadowVarIndex(json, { prefix: opts.varPrefix ?? "--" });
+        colorVar = (hex: string) => idx.colorMap[hex.toLowerCase()];
+        varOpts = {
+          typography: {
+            fontSize: (px: number) => tdx.fontSizeMap[Math.round(px)],
+            lineHeight: (px: number) => tdx.lineHeightMap[Math.round(px)],
+            letterSpacing: (px: number) => tdx.letterSpacingMap[Math.round(px)],
+            fontFamily: (name: string) => tdx.fontFamilyMap[name],
+            fontWeight: (w: number) => tdx.fontWeightMap[Math.round(w)],
+          },
+          dimension: (px: number) => sdx.sizePxMap[Math.round(px)],
+          spacing: (px: number) => sdx.spacingPxMap[Math.round(px)],
+          shadowVar: ({ inset, dx, dy, blur, spread, color }: any) => shx.map[shadowKey(!!inset, dx, dy, blur, spread, color ? normalizeHex(color) : undefined)]
+        } as any;
+      } catch (e) {
+        console.error("Failed to load tokens:", e);
+      }
+    }
+    const code = generateCode(node, opts.framework, { colorVar, ...(varOpts || {}) });
     console.log(code);
   });
 

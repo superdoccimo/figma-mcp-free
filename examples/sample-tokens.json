@@ -1,0 +1,22 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/module.v1.json",
+  "color": {
+    "demo/text": { "value": "#122133" }
+  },
+  "typography": {
+    "demo/text": {
+      "value": {
+        "fontFamily": "Inter",
+        "fontSize": 20,
+        "lineHeight": 24,
+        "letterSpacing": 0,
+        "fontWeight": 600
+      }
+    }
+  },
+  "size": {
+    "demo/text-width": { "value": 200 },
+    "demo/text-height": { "value": 40 }
+  }
+}
+
