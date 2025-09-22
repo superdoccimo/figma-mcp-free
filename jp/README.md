@@ -86,7 +86,7 @@ npm install -g pnpm
     
     - 用途を選択（Personal projectでOK）
 
-画像
+
 
 ### ステップ2：Figmaデスクトップアプリのインストール（推奨）
 
@@ -109,8 +109,6 @@ npm install -g pnpm
 
 ### 重要：これが無料でMCPを使う鍵です！
 
-画像
-
 #### ステップ1：設定画面へアクセス
 
 1. **Figmaを開く**（ブラウザまたはデスクトップアプリ）
@@ -121,11 +119,7 @@ npm install -g pnpm
 
 初めての場合、設定を出すには左上から「ファイルに戻る」をクリックしないといけないようです。
 
-画像
-
 #### ステップ2：Personal Access Tokenの生成
-
-画像
 
 1. **「セキュリティ」タブをクリック**
 
@@ -544,9 +538,6 @@ components/<name>）、欲しい出力形式（コンポーネント + CSS Modul
 このフォーマットで依頼すれば、必要な情報が揃った状態で作業に入れます。
 ```
 
-### 生成されるコードの例
-
-画像
 
 ## 🔧 トラブルシューティング
 
@@ -640,11 +631,11 @@ my-project/
 ├── .env                 # APIキーを保存
 ├── .claude/
 │   └── config.json     # Claude設定
-├── .codex/
-│   └── config.toml     # Codex設定
 ├── src/
 │   └── components/     # 生成されたコンポーネント
 └── figma-designs/      # デザインのリンクや情報
+
+Note: Codex config is in ~/.codex/ (home directory)
 ```
 
 ### 2\. デザイントークンの活用
@@ -682,9 +673,9 @@ Figmaレイヤー名 → コンポーネント名
 *.log
 node_modules/
 .claude/
-.codex/
 
 # トークンは絶対にコミットしない！
+# Note: .codex/ is not listed as it should be in home directory (~/.codex/)
 ```
 
 ## 🚀 応用編：さらに高度な使い方
