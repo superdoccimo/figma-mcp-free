@@ -17,6 +17,8 @@
 
 - ✅ **完全無料**での実装（有料プラン不要）
 
+📖 **English Documentation**: For quick setup and API usage examples, see the [English README](../README.md) - includes package overview and `FIGMA_TOKEN` usage examples.
+
 ## 🎓 前提知識：MCPとは
 
 ### Model Context Protocol (MCP) について
@@ -157,13 +159,16 @@ Webフック - リアルタイム同期機能（将来実装予定）
 
 ファイルの開発リリース - 読み取り専用なら不要
 
-最小構成で始めるなら：
+### 🛡️ 最小権限で OK
+
+**必要最小限 - この4つだけで十分:**
 ✅ 現在のユーザー
-✅ ファイルのコンテンツ  
+✅ ファイルのコンテンツ
 ✅ ファイルのメタデータ
 ✅ ライブラリのコンテンツ
-この4つだけでも十分なMCPサーバーが作れます！
-後で権限が足りなければトークンを再発行すれば大丈夫です。まずは最小構成で動作確認してから拡張していくのがおすすめです。
+
+**🔄 足りなければ再発行**
+権限が不足した場合は後からトークンを再発行すれば大丈夫です。初心者はスコープを過剰にしがちですが、まずは最小構成で動作確認してから拡張していくのがベストプラクティスです。
 ```
 
 5. **「トークンを生成」をクリック**
@@ -292,7 +297,7 @@ claude
 ```
 # 新しい（※露出していない）トークンを使ってください
 claude mcp add figma --scope user \
-  --env FIGMA_API_KEY=figd_xxx \
+  --env FIGMA_TOKEN=figd_xxx \
   -- npx -y figma-developer-mcp --stdio
 ```
 
@@ -321,7 +326,7 @@ claude            # Claude Code を起動
     "figma": {
       "command": "npx",
       "args": ["-y", "figma-developer-mcp", "--stdio"],
-      "env": { "FIGMA_API_KEY": "figd_xxx" }
+      "env": { "FIGMA_TOKEN": "figd_xxx" }
     }
   }
 }
@@ -332,10 +337,10 @@ claude            # Claude Code を起動
 ## よくある見落としチェック
 
 - **.env は自動読込されません。**  
-    `export FIGMA_API_KEY=...` するか、上のように `--env` / `.mcp.json` で渡してください。
+    `export FIGMA_TOKEN=...` するか、上のように `--env` / `.mcp.json` で渡してください。
 
 - **トークン健全性チェック**（まずはAPIが通るかだけ確認）  
-    `curl -sH "X-Figma-Token: $FIGMA_API_KEY" https://api.figma.com/v1/me`  
+    `curl -sH "X-Figma-Token: $FIGMA_TOKEN" https://api.figma.com/v1/me`  
     ユーザーJSONが返れば鍵は有効。Personal Access Token は **`X-Figma-Token` ヘッダ**で使うのが正解です。
 
 - **Figma Dev Mode MCP（公式）と混同しない**  
@@ -399,7 +404,7 @@ model = "gpt-5"
 [mcp_servers.figma]
 command = "npx"
 args    = ["-y", "figma-developer-mcp", "--stdio"]
-env     = { FIGMA_API_KEY = "figd_xxx" }
+env     = { FIGMA_TOKEN = "figd_xxx" }
 ```
 
 ### ステップ4：動作確認
@@ -415,6 +420,20 @@ codex
 ```
 
 ## 🎨 実践：デザインからコード生成
+
+### ⚠️ 重要：対応URLの形式
+
+**✅ 対応:**
+- `https://www.figma.com/file/<FILE_ID>?node-id=1:2`
+- `https://www.figma.com/design/<FILE_ID>?node-id=1-2` (ハイフンはコロンに自動変換)
+
+**❌ 非対応:**
+- `https://www.figma.com/slides/...` (REST APIでノード情報が取得できません)
+- コミュニティページの一部リンク
+
+**node-id表記について:**
+- Figma UIでは `node-id=1-2` と表示されることがありますが、API/ツール側では `1:2` 形式に正規化されます
+- どちらの形式でも動作します
 
 ### 準備：サンプルデザインの用意
 
@@ -527,6 +546,31 @@ components/<name>）、欲しい出力形式（コンポーネント + CSS Modul
    - `src/app/components/IntroductionCard.tsx`
    - `src/app/components/IntroductionCard.module.css`
    - 画像は `public/images/` 配下に配置（通常のNext.js手順でOK）
+
+### 📷 画像アセットの扱い - Next.js実装指針
+
+**⚠️ 重要な原則:**
+- **FigmaのビューURLを`<img>`に直貼りしない** - 有効期限付きCDNのため時間が経つと404エラーになります
+- **推奨アプローチ:**
+  1. ローカル`/public`へエクスポート（最も確実）
+  2. ビルド時にダウンロードして配置
+
+**外部参照する場合（開発者向け）:**
+```javascript
+// next.config.js
+module.exports = {
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'images.figma.com',
+        pathname: '/**',
+      },
+    ],
+  },
+}
+```
+⚠️ 警告: `images.figma.com`のURLは期限付きで、本番環境では404になる可能性があります
 3. テスト・検証方法：
    - `npm run lint`
    - `npm run build`
@@ -556,7 +600,7 @@ components/<name>）、欲しい出力形式（コンポーネント + CSS Modul
 3. 新しいトークンを生成
 4. 環境変数を更新
 
-export FIGMA_API_KEY="新しいトークン"
+export FIGMA_TOKEN="新しいトークン"
 ```
 
 #### 問題2：MCPサーバーが接続できない
@@ -575,6 +619,9 @@ npx figma-developer-mcp --port 3334 --figma-api-key=トークン
 
 # ファイアウォール確認（Windows）
 netsh advfirewall firewall show rule name=all | findstr 3333
+
+# Windows PowerShellでの実行例
+powershell -Command "npx -y figma-developer-mcp --stdio"
 ```
 
 #### 問題3：コード生成がうまくいかない
@@ -608,7 +655,31 @@ Tailwindを使用し、hover効果とクリックイベントを含める"
     
     - 最後に機能追加
 
-#### 問題4：Permission deniedエラー
+#### 問題4：URLを渡しても「ノードが見つからない」エラー
+
+**原因：** `/slides`リンクまたはnode-id未指定
+
+**解決方法：**
+
+```
+症状：URL を渡しても「ノードが見つからない」
+原因：/slides や node-id 未指定
+対処：Figma で対象フレームを選択 → 右クリック Copy link → /file|/design?...node-id=... を取得 → 1-2 を 1:2 に直す
+
+具体的手順：
+1. Figmaでコンポーネント/フレームを右クリック
+2. "Copy link"を選択
+3. URLが /file または /design で始まることを確認
+4. node-id パラメータが含まれることを確認
+5. 1-2 形式を 1:2 に変換（自動変換されるので任意）
+```
+
+**よくある間違い:**
+- ❌ `https://www.figma.com/slides/...` → API非対応
+- ❌ `https://www.figma.com/file/xxx` → node-id不足
+- ✅ `https://www.figma.com/file/xxx?node-id=1:2` → 正しい形式
+
+#### 問題5：Permission deniedエラー
 
 **解決方法：**
 
@@ -676,6 +747,11 @@ node_modules/
 
 # トークンは絶対にコミットしない！
 # Note: .codex/ is not listed as it should be in home directory (~/.codex/)
+
+# 🚨 重要セキュリティ注意事項:
+# - 公開リポジトリのIssue/PRに実トークンを貼らない
+# - 環境変数ファイルは必ず.gitignoreに追加
+# - 設定ファイルをコミットする前に中身を確認
 ```
 
 ## 🚀 応用編：さらに高度な使い方
@@ -709,7 +785,7 @@ jobs:
         uses: actions/setup-node@v2
       - name: Generate Components
         env:
-          FIGMA_API_KEY: ${{ secrets.FIGMA_API_KEY }}
+          FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
         run: |
           npx figma-developer-mcp --sync
 ```
