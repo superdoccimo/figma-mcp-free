@@ -116,6 +116,8 @@ Note: The Figma REST API is fundamentally **read-only**. **Writing operations** 
 
 ### What read-only access still delivers
 
+> **Note:** Figma REST API is primarily **read-only**. **Adding/editing/moving designs cannot be done through REST**. For write operations, use the **Figma Plugin API** (runs inside the editor) or **browser automation**.
+
 - Extract design tokens -> generate CSS/Tailwind/W3C design token JSON
 - Inspect component structure -> output React/Vue/Svelte/HTML code
 - Capture layout data -> plan responsive implementation
@@ -168,6 +170,12 @@ CLI token setup
 - Save token locally: `pnpm --filter figma-mcp-free dev -- init` (or `-- init --token <FIGMA_TOKEN>` for CI)
 - Check status: `pnpm --filter figma-mcp-free dev -- config get token`
 - If `FIGMA_TOKEN` is not present in the environment, the server falls back to the local config (`@figma-mcp-free/config`).
+
+## Security: FIGMA_TOKEN Handling
+
+- Store in `.env` or local config, **never commit to Git** (see `.env.example`)
+- For CI: inject via environment variables (`-- init --token <FIGMA_TOKEN>` is also supported)
+- If leaked: **go to Figma Personal access tokens -> Revoke -> regenerate**
 
 CLI commands
 - Generate code: `pnpm --filter figma-mcp-free dev -- generate <FILE_ID> <NODE_ID> --framework react`
