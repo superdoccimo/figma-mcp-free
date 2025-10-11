@@ -868,6 +868,17 @@ module.exports = {
 
 - 💬 改善提案やフィードバックを歓迎します
 
+## 📚 参考資料
+
+### チュートリアル・ガイド
+- 🌐 **English**: [Comprehensive Setup Guide](https://betelgeuse.work/figma-mcp/)
+- 🌍 **Español**: [Guía de Configuración](https://ehrigite.com/figma-mcp/)
+- 🇯🇵 **日本語**: [詳細セットアップガイド](https://minokamo.tokyo/2025/09/18/9360/)
+
+### 動画チュートリアル
+- 🎥 **English**: [figma-mcp-free Setup Tutorial](https://youtu.be/5c2QNSXRwyk)
+- 🎥 **日本語**: [figma-mcp-free セットアップチュートリアル](https://youtu.be/f2YqnKAy80Y)
+
 ### 謝辞
 
 このプロジェクトは、オープンソースコミュニティの貢献により実現しました：

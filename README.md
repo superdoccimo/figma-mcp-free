@@ -262,4 +262,15 @@ Community
 - Start a discussion to share workflows or request new framework/token support.
 - PRs welcome—see `CONTRIBUTING.md` for required checks.
 
+## Resources
+
+### Tutorials & Guides
+- 🌐 **English**: [Comprehensive Setup Guide](https://betelgeuse.work/figma-mcp/)
+- 🌍 **Español**: [Guía de Configuración](https://ehrigite.com/figma-mcp/)
+- 🇯🇵 **日本語**: [詳細セットアップガイド](https://minokamo.tokyo/2025/09/18/9360/)
+
+### Video Tutorials
+- 🎥 **English**: [figma-mcp-free Setup Tutorial](https://youtu.be/5c2QNSXRwyk)
+- 🎥 **日本語**: [figma-mcp-free セットアップチュートリアル](https://youtu.be/f2YqnKAy80Y)
+
 
