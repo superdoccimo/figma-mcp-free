@@ -5,12 +5,18 @@ import { FigmaClient } from "@figma-mcp-free/figma-client";
 import { toDesignTokens } from "@figma-mcp-free/design-tokens";
 import { generateCode, type Framework } from "@figma-mcp-free/code-generator";
 import { readFileSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
 const program = new Command();
 
 const maskToken = (token: string): string => (token.length <= 8 ? "****" : `${token.slice(0, 4)}...${token.slice(-4)}`);
+const resolveInputPath = (path: string): string => {
+  if (isAbsolute(path)) return path;
+  return resolve(process.env.INIT_CWD || process.cwd(), path);
+};
+
 program
   .name("figma-mcp-free")
   .description("CLI for figma-mcp-free")
@@ -89,7 +95,7 @@ program.command("generate")
     let varOpts: any;
     if (opts.useTokens) {
       try {
-        const txt = readFileSync(opts.useTokens, "utf8");
+        const txt = readFileSync(resolveInputPath(opts.useTokens), "utf8");
         const json = JSON.parse(txt);
         const { buildCssVarIndex, buildTypographyVarIndex, buildSizeSpacingVarIndex, buildShadowVarIndex, shadowKey, normalizeHex } = await import("@figma-mcp-free/design-tokens");
         const idx = buildCssVarIndex(json, { prefix: opts.varPrefix ?? "--" });
@@ -128,13 +134,13 @@ program.command("generate-from-json")
   .option("--use-tokens <path>", "use W3C tokens JSON to substitute colors with CSS variables")
   .option("--var-prefix <prefix>", "CSS var prefix (default --)")
   .action(async (nodeJsonPath: string, opts: { framework: Framework; useTokens?: string; varPrefix?: string }) => {
-    const raw = readFileSync(nodeJsonPath, "utf8");
+    const raw = readFileSync(resolveInputPath(nodeJsonPath), "utf8");
     const node = JSON.parse(raw);
     let colorVar: ((hex: string) => string | undefined) | undefined;
     let varOpts: any;
     if (opts.useTokens) {
       try {
-        const txt = readFileSync(opts.useTokens, "utf8");
+        const txt = readFileSync(resolveInputPath(opts.useTokens), "utf8");
         const json = JSON.parse(txt);
         const { buildCssVarIndex, buildTypographyVarIndex, buildSizeSpacingVarIndex, buildShadowVarIndex, shadowKey, normalizeHex } = await import("@figma-mcp-free/design-tokens");
         const idx = buildCssVarIndex(json, { prefix: opts.varPrefix ?? "--" });

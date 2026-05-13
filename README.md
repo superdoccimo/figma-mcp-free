@@ -4,273 +4,156 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-## Supported Figma links (Important)
+Free, read-only MCP workflow for Figma using the REST API.
 
-- ✅ Supports **/file** or **/design** links (e.g., `https://www.figma.com/design/<FILE_ID>/...`)
-- ❌ **/slides** are not supported by the API (node information cannot be retrieved)
-- **Node ID format**: Figma URLs use `?node-id=1-2`, but the API/CLI requires `1:2` (hyphen to colon).
+`figma-mcp-free` lets Claude, Cursor, Windsurf, Cline, and local scripts inspect Figma files, list components, export design tokens, and generate starter UI code without depending on a paid Dev Mode MCP seat. It is a community workflow around Figma Personal Access Tokens and the public REST API.
 
-Quick check:
+This does not replace Figma Dev Mode or any official write-capable workflow. The Figma REST API is read-only, so this project cannot create, edit, move, or publish design objects back into Figma.
+
+## What It Does
+
+- Runs as an MCP STDIO server for AI coding tools.
+- Provides a CLI for component search, code generation, and token export.
+- Reads Figma `/file` and `/design` links through a Personal Access Token.
+- Converts Figma node JSON into React, Vue, Svelte, or HTML starter code.
+- Exports colors, spacing, sizes, typography, and shadows as W3C Design Tokens.
+- Includes an offline demo path that works without a Figma token.
+
+## Try It Without A Token
+
+Use the sample node and token files to verify the generator before connecting a real Figma file.
+
 ```bash
-# If you can issue a temporary URL for an image (expires soon), it's OK.
-curl -H "X-Figma-Token: $FIGMA_TOKEN" \
-  "https://api.figma.com/v1/images/<FILE_ID>?ids=1:2&format=png"
+git clone https://github.com/superdoccimo/figma-mcp-free.git
+cd figma-mcp-free
+pnpm install
+pnpm -r build
+pnpm --filter figma-mcp-free dev -- generate-from-json ./examples/sample-node.json --framework react --use-tokens ./examples/sample-tokens.json
 ```
 
-Quick Start (from clone)
+That command does not call the Figma API. It is the fastest first-run check for contributors, reviewers, and CI-like environments.
 
-0) In Figma, get a **/design** (or /file) link and execute **Link to selection** on the target frame.
-   → Convert the `?node-id=1-2` in the URL to **`1:2`** and make a note (this is `<NODE_ID>`)
+## Live Figma Quickstart
 
-1) Operation verification (optional)
+1. In Figma, select the target frame or component and copy a link to the selection.
+2. Use a `/design` or `/file` URL. `/slides` links are not supported by the Figma REST API.
+3. Convert URL node IDs from `node-id=1-2` to `1:2` when passing them to the API or CLI.
+4. Store your token locally:
+
+```bash
+pnpm --filter figma-mcp-free dev -- init
+```
+
+5. Run the CLI:
+
+```bash
+pnpm --filter figma-mcp-free dev -- components <FILE_ID> --query Button --limit 5
+pnpm --filter figma-mcp-free dev -- export-tokens <FILE_ID> > tokens.json
+pnpm --filter figma-mcp-free dev -- generate <FILE_ID> <NODE_ID> --framework react --use-tokens ./tokens.json > out.jsx
+```
+
+Quick API check:
+
 ```bash
 curl -H "X-Figma-Token: $FIGMA_TOKEN" \
   "https://api.figma.com/v1/files/<FILE_ID>/nodes?ids=<NODE_ID>"
 ```
-→ If JSON is returned, it's OK. Then execute the following commands.
 
-- Star this repo to support the project!
-- Clone: `git clone https://github.com/superdoccimo/figma-mcp-free.git`
-- Install: `cd figma-mcp-free && pnpm install && pnpm -r build`
-- Set token: `pnpm --filter figma-mcp-free dev -- init`
-- Find components: `pnpm --filter figma-mcp-free dev -- components <FILE_ID> --query Button --limit 5`
-- Generate (no tokens): `pnpm --filter figma-mcp-free dev -- generate <FILE_ID> <NODE_ID> --framework react > out-no-tokens.jsx`
-- Export tokens: `pnpm --filter figma-mcp-free dev -- export-tokens <FILE_ID> > tokens.json`
-- Generate (with tokens): `pnpm --filter figma-mcp-free dev -- generate <FILE_ID> <NODE_ID> --framework react --use-tokens ./tokens.json > out-with-tokens.jsx`
+If JSON is returned, the token, file ID, and node ID are aligned.
 
-## Assets / Images Handling (Important)
+## Supported Links And Limits
 
-- **Figma view URLs (/slides, /design, /file) are not direct image links.**
-- You can use temporary URLs from the **Images API** during development, but they **expire quickly**.
-- For production, use **(a) images exported from Figma to `/public/images`** or **(b) direct links from your own server/CDN**.
+| Item | Status | Notes |
+| --- | --- | --- |
+| `/file/<FILE_ID>` | Supported | Use with a selected `node-id` when generating code from one node. |
+| `/design/<FILE_ID>` | Supported | Same REST file/node access as `/file`. |
+| `/slides/...` | Not supported | Figma's REST API does not expose slide node information for this workflow. |
+| `node-id=1-2` | Needs conversion | Figma URLs often use hyphens; API and CLI calls require `1:2`. |
+| Write operations | Not supported | REST access is read-only. Use the Figma Plugin API or editor workflows for writes. |
+| Images API URLs | Temporary | Good for development checks, but they expire and should not be committed as README or production assets. |
 
-Next.js configuration (when using external direct links):
-```js
-// next.config.js
-export default {
-  images: {
-    remotePatterns: [
-      { protocol: 'https', hostname: 'minokamo.tokyo' },
-      { protocol: 'https', hostname: 'vibelsd.com' }
-      // If using temporary URLs, also add images.figma.com / s3-*.amazonaws.com etc.
-    ]
-  }
-}
+## MCP Server
+
+Build the packages, then launch the STDIO server:
+
+```bash
+pnpm -r build
+node packages/mcp-server/dist/index.js
 ```
 
-## Troubleshooting: Only a black frame is displayed
+The server reads `FIGMA_TOKEN` from the environment first. If the environment variable is not present, it falls back to the token stored by `figma-mcp-free init`.
 
-- `next/image` **allowed domain missing** → `/_next/image?...` returns 400
-- **Temporary URL expired** → 403/404
-- **Path/extension/case mismatch** (e.g., expecting `/public` but file is not there)
-- **Export mismatch** (e.g., using only rounded rectangles and forgetting to replace images)
-- Mask/clip related issues → Try `use_absolute_bounds=true` with the Images API
+Exposed MCP tools:
 
-Demo scripts
-- Prerequisite: `FIGMA_TOKEN`, `FILE_ID`, and `NODE_ID` are all required (`NODE_ID` in `1:2` format).
-- `./scripts/demo.sh` runs the above end-to-end. Requires env: `FIGMA_TOKEN`, `FILE_ID`, `NODE_ID`.
-- Offline fallback: `pnpm --filter figma-mcp-free dev -- generate-from-json ./examples/sample-node.json --framework react --use-tokens ./examples/sample-tokens.json`
+- `get_file`
+- `get_components`
+- `list_frames`
+- `generate_code`
+- `export_tokens`
 
-Documentation map
-- `docs/quickstart.md` – English quickstart covering install, token storage, and CLI usage.
-- `docs/troubleshooting.md` – Common pitfalls (token scopes, rate limits) and recovery steps.
-- `index.md` – Working draft for the detailed Japanese walkthrough.
-- Campaign article (JP): https://minokamo.tokyo/2025/09/18/9360/
-- Upcoming English deep dive: https://vibelsd.com/figma-mcp-free (placeholder)
-- Upcoming Spanish deep dive: https://vibelsd.net/figma-mcp-free (placeholder)
+Example client configs live in [`examples/codex-config/mcp.json`](examples/codex-config/mcp.json) and [`examples/cursor-config/mcp.json`](examples/cursor-config/mcp.json).
 
-Free, open MCP server alternative to Figma Dev Mode.
-
-- Protocol: MCP STDIO
-- API: Figma REST (Personal Access Token)
-- Language: TypeScript / Node 18+
-
-Getting started and roadmap: see `figma_mcp_requirements.md` and `docs/`.
-
-- Campaign article for GitHub users (JP): `jp/docs/marketing/github-article.md`
-- Japanese documentation: [jp/README.md](jp/README.md)
-
-- Setup notes: `basic_notes.md`
-- Suggested commands: `suggested_commands.md`
-- Example env: `.env.example` (do not commit real tokens)
-
-## Why this project exists
-
-- Figma restricts its official MCP server to paid Dev Mode seats even though MCP itself is an open standard; Personal Access Tokens remain read-only.
-- `figma-mcp-free` proves that the read-only API still unlocks practical workflows and challenges enclosure strategies around open technology.
-
-Note: The Figma REST API is fundamentally **read-only**. **Writing operations** such as adding, editing, or moving designs **cannot be done via REST**. If necessary, use the **Figma Plugin API** (executed within the editor) or **browser automation**.
-
-### Visual comparison
-
-![Comparison of enclosure strategies highlighting community alternatives](https://private-us-east-1.manuscdn.com/sessionFile/cYYyfjHYjPMypbmfJARaoH/sandbox/PnoIpgKScKT1IADGEN4iGk-images_1758603284019_na1fn_L2hvbWUvdWJ1bnR1L2ZpZ21hLW1jcC1mcmVlL2ZpZ21hX2NvbXBhcmlzb25fY2hhcnRfZW4.svg?Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9wcml2YXRlLXVzLWVhc3QtMS5tYW51c2Nkbi5jb20vc2Vzc2lvbkZpbGUvY1lZeWZqSFlqUE15cGJtZkpBUmFvSC9zYW5kYm94L1Bub0lwZ0tTY0tUMUlBREdFTjRpR2staW1hZ2VzXzE3NTg2MDMyODQwMTlfbmExZm5fTDJodmJXVXZkV0oxYm5SMUwyWnBaMjFoTFcxamNDMW1jbVZsTDJacFoyMWhYMk52YlhCaGNtbHpiMjVmWTJoaGNuUmZaVzQuc3ZnIiwiQ29uZGl0aW9uIjp7IkRhdGVMZXNzVGhhbiI6eyJBV1M6RXBvY2hUaW1lIjoxNzk4NzYxNjAwfX19XX0_&Key-Pair-Id=K2HSFNDJXOU9YS&Signature=HSAqTEMZxiCMQvmAIAuXUBctSdHOzA3a3AL4DBn0I7B5COupG2Qf5i5gp9iVwHq1c9fm3QRw2LoC8FJIQGsMsz-sU7f5XbZlv7HvTyOR9MueDui0iD9ZYnqWwCTGBqaxOhWsWdufhhW1w6iAzddvf~XFneLBQTrUzlsSupTKEq0JxZKL9Dy5LnK9flAjSwvVS7YCv4l~qR~k5~F2Ta5ssnHWdps4eRcaKN2lIPAOb5GZTVyBxrHA4tQxTwXiJnIwiKADI9eaYndkyS2U6hucGRa0PhUmwtW0bzeFOmhHGdc3TWpGDvOQfC~pay8~-jLZ88fHfCx7Fdl702FDXoKU0w__)
-
-| Company/Product | Enclosure strategy | Community alternative |
-| --- | --- | --- |
-| Figma Dev Mode | Monetized MCP server, write API restricted | `figma-mcp-free` (read-only API is enough) |
-| Docker Desktop | OSS engine bundled with commercial licensing | Podman, Rancher Desktop |
-| Elasticsearch | Shift from OSS to Elastic License | OpenSearch |
-| Terraform | Re-licensed under HashiCorp License | OpenTofu |
-| MongoDB | SSPL limits third-party cloud hosting | FerretDB, DocumentDB |
-| Supabase | Paid packaging of an OSS stack | Operate the OSS components directly |
-
-### What read-only access still delivers
-
-> **Note:** Figma REST API is primarily **read-only**. **Adding/editing/moving designs cannot be done through REST**. For write operations, use the **Figma Plugin API** (runs inside the editor) or **browser automation**.
-
-- Extract design tokens -> generate CSS/Tailwind/W3C design token JSON
-- Inspect component structure -> output React/Vue/Svelte/HTML code
-- Capture layout data -> plan responsive implementation
-- Gather color/typography info -> feed themes and design systems
-- Inventory assets -> seed an image optimization pipeline
-
-Even if you need write access, there are free-tier detours:
-- **Figma Plugin**: execute `figma.createComponent(componentData);` inside a plugin to write back
-- **Browser automation**: drive the web UI via Playwright/Puppeteer
-- **Import workflow**: export with figma-mcp-free -> tweak locally -> re-import via SVG or other supported formats
-
-### Package capabilities
+## Packages
 
 | Package | Purpose | Highlights |
 | --- | --- | --- |
-| `@figma-mcp-free/figma-client` | Thin wrapper around the Figma REST API | Handles auth headers, pagination, component & token fetch helpers |
-| `@figma-mcp-free/code-generator` | Converts node JSON into framework code | React/Vue/Svelte/HTML renderers with layout, text, and shadow mapping |
-| `@figma-mcp-free/design-tokens` | Normalises styles into W3C design token JSON | Generates color/spacing/size/typography/shadow tokens with var substitution |
-| `@figma-mcp-free/mcp-server` | MCP STDIO server exposing Figma tools | `generate_code`, `get_components`, `export_tokens` tools ready for Claude/Cursor |
-| `@figma-mcp-free/cli` | Developer CLI companion | `components`, `generate`, `export-tokens`, config storage for local tokens |
+| `@figma-mcp-free/figma-client` | Figma REST wrapper | Auth headers, file/node/component helpers. |
+| `@figma-mcp-free/design-tokens` | Token exporter | W3C Design Tokens for color, size, spacing, typography, and shadow values. |
+| `@figma-mcp-free/code-generator` | UI code generator | React, Vue, Svelte, and HTML output from node JSON. |
+| `@figma-mcp-free/server` | MCP STDIO server | Tools for MCP-compatible clients. |
+| `figma-mcp-free` | CLI | `init`, `components`, `export-tokens`, `generate`, and `generate-from-json`. |
 
-### Architecture overview
+## Visual Overview
 
-![Architecture diagram showing Claude/Cursor clients talking to the figma-mcp-free server and Figma API](https://private-us-east-1.manuscdn.com/sessionFile/cYYyfjHYjPMypbmfJARaoH/sandbox/PnoIpgKScKT1IADGEN4iGk-images_1758603284020_na1fn_L2hvbWUvdWJ1bnR1L2ZpZ21hLW1jcC1mcmVlL2ZpZ21hX2FyY2hpdGVjdHVyZV9kaWFncmFtX2Vu.svg?Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9wcml2YXRlLXVzLWVhc3QtMS5tYW51c2Nkbi5jb20vc2Vzc2lvbkZpbGUvY1lZeWZqSFlqUE15cGJtZkpBUmFvSC9zYW5kYm94L1Bub0lwZ0tTY0tUMUlBREdFTjRpR2staW1hZ2VzXzE3NTg2MDMyODQwMjBfbmExZm5fTDJodmJXVXZkV0oxYm5SMUwyWnBaMjFoTFcxamNDMW1jbVZsTDJacFoyMWhYMkZ5WTJocGRHVmpkSFZ5WlY5a2FXRm5jbUZ0WDJWdS5zdmciLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3OTg3NjE2MDB9fX1dfQ__&Key-Pair-Id=K2HSFNDJXOU9YS&Signature=M1AXYtBJ7N4Hj~ERJOX6xbrYhyfvVN2NTrdfQz319Q0OB2YpQh2JCuxjTcd4IdRCIoUff8Y0SEBx2QbI88SVN9x80e~9s8IoqgzvTv5VbddskHR1T~yrX9B6e~5pmB~rKxcpKm12EdHH06Q102WqsaI30fCouJuPgr5XIKJHfAHTxFM1Ve82LKA0IUBcpcA~6mwjX2E7McRxtxiFys~hpOw3XuWTx-GjrJBVQfCvpTCcywviosl-841LZLsfI7VagHNtJPsU1OJl-VpdgjPRCfnbTfRNGru30sXWyMEU-gnO5nX~siNjMMOO0K0u4NHVM80HM1yFdCzPBftY9fnqdg__)
+![Comparison of Figma Dev Mode, paid enclosure, and read-only community workflows](docs/assets/figma_comparison_chart_en.svg)
 
-Basic usage (client only)
-- Set `FIGMA_TOKEN` in your environment (or wire into the server/CLI later)
-- Use `FigmaClient` to call the API:
+![Architecture diagram showing MCP clients, figma-mcp-free, and the Figma REST API](docs/assets/figma_architecture_diagram_en.svg)
 
-```ts
-import { FigmaClient } from "@figma-mcp-free/figma-client";
-const client = new FigmaClient({ token: process.env.FIGMA_TOKEN! });
-const file = await client.getFile("<FILE_ID>");
-const components = await client.getComponents("<FILE_ID>");
-const frames = await client.listFrames("<FILE_ID>");
-```
+## Security
 
-Run MCP Server (stdio)
-- Build packages: `pnpm -r build`
-- Ensure `FIGMA_TOKEN` is set in environment
-- Start server: `node packages/mcp-server/dist/index.js`
+- Keep `FIGMA_TOKEN` in your environment, `.env`, or the local config created by `figma-mcp-free init`.
+- Do not commit real tokens, private Figma file IDs, or raw API responses containing sensitive project names.
+- In CI, inject the token as a secret environment variable.
+- If a token leaks, revoke it in Figma settings and create a new one.
+- Prefer masked logs. `figma-mcp-free config get token` prints token status without revealing the full value.
 
-## Security: Handling FIGMA_TOKEN
+See [SECURITY.md](SECURITY.md) for sensitive report handling.
 
-- Save it in `.env` or local configuration, and **do not commit it to Git** (refer to `.env.example`)
-- Inject it as an environment variable in CI (`-- init --token <FIGMA_TOKEN>` is also possible)
-- In case of leakage, **Revoke and re-issue** from Figma's Personal access tokens settings.
+## Assets And Images
 
-CLI token setup
-- Save token locally: `pnpm --filter figma-mcp-free dev -- init` (or `-- init --token <FIGMA_TOKEN>` for CI)
-- Check status: `pnpm --filter figma-mcp-free dev -- config get token`
-- If `FIGMA_TOKEN` is not present in the environment, the server falls back to the local config (`@figma-mcp-free/config`).
+Figma view URLs are not direct image assets. For generated websites and public docs:
 
-## Security: FIGMA_TOKEN Handling
+- Use files exported from Figma into your app or repository assets.
+- Use your own CDN or server for stable production image URLs.
+- Treat `images.figma.com` and Images API results as temporary development URLs.
+- Keep README diagrams in [`docs/assets/`](docs/assets/) and link them with relative paths.
 
-- Store in `.env` or local config, **never commit to Git** (see `.env.example`)
-- For CI: inject via environment variables (`-- init --token <FIGMA_TOKEN>` is also supported)
-- If leaked: **go to Figma Personal access tokens -> Revoke -> regenerate**
+More details are in [docs/troubleshooting.md](docs/troubleshooting.md).
 
-CLI commands
-- Generate code: `pnpm --filter figma-mcp-free dev -- generate <FILE_ID> <NODE_ID> --framework react`
-- Export tokens: `pnpm --filter figma-mcp-free dev -- export-tokens <FILE_ID>`
-- List components: `pnpm --filter figma-mcp-free dev -- components <FILE_ID> [--query <text>] [--limit <n>] [--json]`
-  - Optional: `--use-tokens ./tokens.json [--var-prefix --]` replaces hex colors with CSS variables derived from a W3C design token JSON (e.g., `var(--color-page-frame-shape)`).
-  - With tokens, typography values map to variables when matches exist (font-size, line-height, letter-spacing, font-family, font-weight).
-  - Size/spacing tokens map width, height, and padding pixel values to `var(--size-...)` / `var(--spacing-...)` when exact matches exist.
-  - Shadow tokens map DROP_SHADOW/INNER_SHADOW styles to `var(--shadow-...)` when the design token index contains a matching shadow.
+## Documentation
 
-Exporting design tokens
-- Tool: `export_tokens` (input: `{ fileId: string }`)
-- Output: W3C Design Tokens (module v1)
-  - color: SOLID fills -> `color` tokens (`#RRGGBB` / `#RRGGBBAA`)
-  - spacing: padding on each edge (where present) -> `spacing/<path>-padding-{top|right|bottom|left}`
-  - size: width/height (`absoluteBoundingBox`) -> `size/<path>-{width|height}`
-  - typography: TEXT node `fontFamily/fontSize/lineHeight/letterSpacing/fontWeight` -> `typography/<path>`
-  - shadow: DROP_SHADOW/INNER_SHADOW -> `shadow/<path>` (CSS `box-shadow` syntax, multiple shadows comma-separated)
-  - Token keys reflect the node path, e.g. `page/frame/shape`
-
-List components (normalized)
-- Tool: `get_components` (input: `{ fileId: string, q?: string, limit?: number }`)
-- Optional filters: `{ q?: string, limit?: number }`
-- Output: `[{ key, nodeId, name }]`
-
-Generate code from a node
-- Tool: `generate_code` (input: `{ fileId: string, nodeId: string, framework: "react" | "vue" | "svelte" | "html" }`)
-- Minimal implementation inspects node type/size/fills and TEXT characters, building simple nested markup.
-- Also maps basic styles when available: border (stroke), border radius, padding, auto-layout (flex direction/gap), and text styles (font size/line-height/weight/align).
-- Enhanced mapping: text color from fills, font-family, letter-spacing, flex alignment (justify/align), and absolute positioning (`layoutPositioning=ABSOLUTE` uses `left/top`).
-- Shadows: convert DROP_SHADOW/INNER_SHADOW to `box-shadow` (substituting tokens when available).
-- Shadow tokens: when a shadow structure matches `tokens.shadow`, output `var(--shadow-...)` instead.
-- Tokens support: pass `{ tokens, varPrefix? }` to substitute colors/typography/size/spacing/shadow with CSS variables.
-
-MCP example (generate_code)
-Input (JSON):
-```
-{
-  "fileId": "<FILE_ID>",
-  "nodeId": "<NODE_ID>",
-  "framework": "react",
-  "tokens": { "$schema": "https://design-tokens.github.io/community-group/format/module.v1.json", "color": { "page/frame/shape": { "value": "#112233" } } },
-  "varPrefix": "--"
-}
-```
-Output: Code string with color replaced by `var(--color-page-frame-shape)` when matched.
-
-Sample output (React)
-
-```jsx
-export function ButtonPrimary() {
-  return (
-    <div
-      style={{
-        backgroundColor: "var(--color-page-frame-shape)",
-        borderRadius: "12px",
-        padding: "var(--spacing-page-frame-shape-padding-top) var(--spacing-page-frame-shape-padding-right)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <span
-        style={{
-          color: "#FFFFFF",
-          fontFamily: "'Inter', sans-serif",
-          fontSize: "16px",
-          fontWeight: 600,
-        }}
-      >
-        Get Started
-      </span>
-    </div>
-  );
-}
-```
-
-### End-to-end workflow
-
-![Timeline diagram illustrating setup, design token export, component generation, and deployment flow](https://private-us-east-1.manuscdn.com/sessionFile/cYYyfjHYjPMypbmfJARaoH/sandbox/PnoIpgKScKT1IADGEN4iGk-images_1758603284021_na1fn_L2hvbWUvdWJ1bnR1L2ZpZ21hLW1jcC1mcmVlL2ZpZ21hX3dvcmtmbG93X3RpbWVsaW5lX2Vu.svg?Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9wcml2YXRlLXVzLWVhc3QtMS5tYW51c2Nkbi5jb20vc2Vzc2lvbkZpbGUvY1lZeWZqSFlqUE15cGJtZkpBUmFvSC9zYW5kYm94L1Bub0lwZ0tTY0tUMUlBREdFTjRpR2staW1hZ2VzXzE3NTg2MDMyODQwMjFfbmExZm5fTDJodmJXVXZkV0oxYm5SMUwyWnBaMjFoTFcxamNDMW1jbVZsTDJacFoyMWhYM2R2Y210bWJHOTNYM1JwYldWc2FXNWxYMlZ1LnN2ZyIsIkNvbmRpdGlvbiI6eyJEYXRlTGVzc1RoYW4iOnsiQVdTOkVwb2NoVGltZSI6MTc5ODc2MTYwMH19fV19&Key-Pair-Id=K2HSFNDJXOU9YS&Signature=v6iWicOTpKQrQNPNL8dt1FEHMUOG4AEkU~4HyuE-LgCllvzko3N1tNXaHoJhfsVE~K6Wjrh~vWkYkCXpYjJlCoEDIWD4p90ec5-cXyRWI0hIhOAxMOubqtbrMvNcTqz2DRAqU5l9-q03z14fp5zAamTfU2kSrtQfHPYFK-vOUVPX7pys3NCLuhD8Z7BL1fKs80IzD0EQpbbg8M8ppPA185rHeXJseWM3PZNjo0xwRwdSNjiE~F9bEcfbqMB1Y10-2SufMpEp~8uTR1LgMTIFLTxSmFUolxnvTvFQX4bc3EnIBoCuWhMSihvOzE~vToRSWSzKOxBWe6LrQCRO1uoLGQ__)
-
-Community
-- File an issue if you hit a missing endpoint or authenticator gap.
-- Start a discussion to share workflows or request new framework/token support.
-- PRs welcome—see `CONTRIBUTING.md` for required checks.
+- [Quickstart](docs/quickstart.md) - install, offline demo, live Figma usage, and MCP setup.
+- [Troubleshooting](docs/troubleshooting.md) - token scopes, `/slides`, node IDs, temporary images, and MCP client issues.
+- [Why this exists](docs/why-this-exists.md) - project positioning and open workflow context.
+- [Demo runbook](docs/demo/runbook.md) - repeatable demo commands.
+- [Japanese README](jp/README.md) - detailed Japanese setup and usage guide.
+- [Requirements notes](figma_mcp_requirements.md) - longer planning and roadmap context.
 
 ## Resources
 
-### Tutorials & Guides
-- 🌐 **English**: [Comprehensive Setup Guide](https://betelgeuse.work/figma-mcp/)
-- 🌍 **Español**: [Guía de Configuración](https://ehrigite.com/figma-mcp/)
-- 🇯🇵 **日本語**: [詳細セットアップガイド](https://minokamo.tokyo/2025/09/18/9360/)
+- English setup guide: [betelgeuse.work/figma-mcp](https://betelgeuse.work/figma-mcp/)
+- Spanish setup guide: [ehrigite.com/figma-mcp](https://ehrigite.com/figma-mcp/)
+- Japanese setup guide: [minokamo.tokyo](https://minokamo.tokyo/2025/09/18/9360/)
+- English video: [figma-mcp-free Setup Tutorial](https://youtu.be/5c2QNSXRwyk)
+- Japanese video: [figma-mcp-free setup tutorial](https://youtu.be/f2YqnKAy80Y)
 
-### Video Tutorials
-- 🎥 **English**: [figma-mcp-free Setup Tutorial](https://youtu.be/5c2QNSXRwyk)
-- 🎥 **日本語**: [figma-mcp-free セットアップチュートリアル](https://youtu.be/f2YqnKAy80Y)
+## Contributing
 
+Issues and PRs are welcome. Please keep changes focused, avoid committing secrets, and run:
 
+```bash
+pnpm install
+pnpm -r build
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the GitHub issue templates before opening larger changes.

@@ -18,7 +18,7 @@ export interface NodeLike {
   name: string;
   type: string;
   children?: NodeLike[];
-  absoluteBoundingBox?: { width: number; height: number };
+  absoluteBoundingBox?: { x?: number; y?: number; width: number; height: number };
   fills?: Array<{ type: string; visible?: boolean; color?: { r: number; g: number; b: number; a?: number } }>;
   characters?: string;
   cornerRadius?: number;
@@ -145,23 +145,25 @@ function layoutReact(node: NodeLike): Record<string, string | number> {
     const primary = node.primaryAxisAlignItems;
     const counter = node.counterAxisAlignItems;
     if (primary) {
-      out.justifyContent = primary === "MIN" ? (isRow ? "flex-start" : "flex-start")
+      const justifyContent = primary === "MIN" ? (isRow ? "flex-start" : "flex-start")
         : primary === "CENTER" ? "center"
         : primary === "MAX" ? "flex-end"
         : primary === "SPACE_BETWEEN" ? "space-between" : undefined;
+      if (justifyContent) out.justifyContent = justifyContent;
     }
     if (counter) {
-      out.alignItems = counter === "MIN" ? "flex-start"
+      const alignItems = counter === "MIN" ? "flex-start"
         : counter === "CENTER" ? "center"
         : counter === "MAX" ? "flex-end"
         : counter === "BASELINE" ? "baseline" : undefined;
+      if (alignItems) out.alignItems = alignItems;
     }
   }
   // absolute positioning
   if (node.layoutPositioning === "ABSOLUTE" && node.absoluteBoundingBox) {
     out.position = "absolute";
-    if (typeof node.absoluteBoundingBox["x" as any] === "number") out.left = Math.round((node as any).absoluteBoundingBox.x);
-    if (typeof node.absoluteBoundingBox["y" as any] === "number") out.top = Math.round((node as any).absoluteBoundingBox.y);
+    if (typeof node.absoluteBoundingBox.x === "number") out.left = Math.round(node.absoluteBoundingBox.x);
+    if (typeof node.absoluteBoundingBox.y === "number") out.top = Math.round(node.absoluteBoundingBox.y);
   }
   return out;
 }

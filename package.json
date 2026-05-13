@@ -1,13 +1,19 @@
 {
-  "name": "figma-mcp-free",
+  "name": "@figma-mcp-free/workspace",
   "private": true,
   "version": "0.1.0",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=18"
+  },
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
-    "build": "echo 'build: run pnpm -r build after installing deps'",
-    "dev": "echo 'dev: run package-specific dev after installing deps'"
+    "build": "pnpm -r run build",
+    "check": "pnpm -r run build",
+    "cli": "pnpm --filter figma-mcp-free dev",
+    "mcp": "pnpm --filter @figma-mcp-free/server dev"
   },
   "repository": {
     "type": "git",

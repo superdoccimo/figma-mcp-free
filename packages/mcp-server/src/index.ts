@@ -1,9 +1,9 @@
-import { Server } from "@modelcontextprotocol/sdk/server";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { FigmaClient } from "@figma-mcp-free/figma-client";
 import { toDesignTokens, buildCssVarIndex, buildTypographyVarIndex, buildSizeSpacingVarIndex, buildShadowVarIndex, shadowKey, normalizeHex } from "@figma-mcp-free/design-tokens";
-import { generateCode, type Framework } from "@figma-mcp-free/code-generator";
+import { generateCode, type Framework, type GenerateOptions } from "@figma-mcp-free/code-generator";
 import { getToken as getConfigToken } from "@figma-mcp-free/config";
 
 function getToken(): string {
@@ -13,13 +13,13 @@ function getToken(): string {
 }
 
 async function main() {
-  const server = new Server({ name: "figma-mcp-free", version: "0.1.0" });
+  const server = new McpServer({ name: "figma-mcp-free", version: "0.1.0" });
 
-  server.tool(
+  server.registerTool(
     "get_file",
     {
       description: "Get a Figma file by ID",
-      inputSchema: z.object({ fileId: z.string() })
+      inputSchema: { fileId: z.string() }
     },
     async ({ fileId }) => {
       const client = new FigmaClient({ token: getToken() });
@@ -28,11 +28,11 @@ async function main() {
     }
   );
 
-  server.tool(
+  server.registerTool(
     "get_components",
     {
       description: "List components for a Figma file (normalized)",
-      inputSchema: z.object({ fileId: z.string(), q: z.string().optional(), limit: z.number().int().positive().max(1000).optional() })
+      inputSchema: { fileId: z.string(), q: z.string().optional(), limit: z.number().int().positive().max(1000).optional() }
     },
     async ({ fileId, q, limit }: { fileId: string; q?: string; limit?: number }) => {
       const client = new FigmaClient({ token: getToken() });
@@ -43,15 +43,15 @@ async function main() {
         items = items.filter(i => i.name.toLowerCase().includes(low));
       }
       if (limit) items = items.slice(0, limit);
-      return { content: [{ type: "json", json: items }] } as any;
+      return { content: [{ type: "text", text: JSON.stringify(items, null, 2) }] };
     }
   );
 
-  server.tool(
+  server.registerTool(
     "list_frames",
     {
       description: "List frame nodes in a file",
-      inputSchema: z.object({ fileId: z.string() })
+      inputSchema: { fileId: z.string() }
     },
     async ({ fileId }) => {
       const client = new FigmaClient({ token: getToken() });
@@ -60,36 +60,36 @@ async function main() {
     }
   );
 
-  server.tool(
+  server.registerTool(
     "export_tokens",
     {
       description: "Export design tokens from a file",
-      inputSchema: z.object({ fileId: z.string() })
+      inputSchema: { fileId: z.string() }
     },
     async ({ fileId }) => {
       const client = new FigmaClient({ token: getToken() });
       const file = await client.getFile(fileId);
       const tokens = toDesignTokens(file);
-      return { content: [{ type: "json", json: tokens }] } as any;
+      return { content: [{ type: "text", text: JSON.stringify(tokens, null, 2) }] };
     }
   );
 
-  server.tool(
+  server.registerTool(
     "generate_code",
     {
       description: "Generate UI code for a node in a file (optionally with tokens)",
-      inputSchema: z.object({
+      inputSchema: {
         fileId: z.string(),
         nodeId: z.string(),
         framework: z.enum(["react", "vue", "svelte", "html"]),
         tokens: z.any().optional(),
         varPrefix: z.string().optional()
-      })
+      }
     },
     async ({ fileId, nodeId, framework, tokens, varPrefix }: { fileId: string; nodeId: string; framework: Framework; tokens?: unknown; varPrefix?: string }) => {
       const client = new FigmaClient({ token: getToken() });
       const node = await client.getNode(fileId, nodeId);
-      let opts: Parameters<typeof generateCode>[2] | undefined;
+      let opts: GenerateOptions | undefined;
       if (tokens && typeof tokens === "object") {
         try {
           const prefix = varPrefix ?? "--";
@@ -98,18 +98,18 @@ async function main() {
           const sizeIdx = buildSizeSpacingVarIndex(tokens as any, { prefix });
           const shadowIdx = buildShadowVarIndex(tokens as any, { prefix });
           opts = {
-            colorVar: (hex) => colorIdx.colorMap[hex.toLowerCase()],
+            colorVar: (hex: string) => colorIdx.colorMap[hex.toLowerCase()],
             typography: {
-              fontSize: (px) => typoIdx.fontSizeMap[Math.round(px)],
-              lineHeight: (px) => typoIdx.lineHeightMap[Math.round(px)],
-              letterSpacing: (px) => typoIdx.letterSpacingMap[Math.round(px)],
-              fontFamily: (name) => typoIdx.fontFamilyMap[name],
-              fontWeight: (w) => typoIdx.fontWeightMap[Math.round(w)],
+              fontSize: (px: number) => typoIdx.fontSizeMap[Math.round(px)],
+              lineHeight: (px: number) => typoIdx.lineHeightMap[Math.round(px)],
+              letterSpacing: (px: number) => typoIdx.letterSpacingMap[Math.round(px)],
+              fontFamily: (name: string) => typoIdx.fontFamilyMap[name],
+              fontWeight: (w: number) => typoIdx.fontWeightMap[Math.round(w)],
             },
-            dimension: (px) => sizeIdx.sizePxMap[Math.round(px)],
-            spacing: (px) => sizeIdx.spacingPxMap[Math.round(px)],
-            shadowVar: ({ inset, dx, dy, blur, spread, color }) => shadowIdx.map[shadowKey(!!inset, dx, dy, blur, spread, color ? normalizeHex(color) : undefined)]
-          } as any;
+            dimension: (px: number) => sizeIdx.sizePxMap[Math.round(px)],
+            spacing: (px: number) => sizeIdx.spacingPxMap[Math.round(px)],
+            shadowVar: ({ inset, dx, dy, blur, spread, color }: { inset: boolean; dx: number; dy: number; blur: number; spread: number; color: string | undefined }) => shadowIdx.map[shadowKey(!!inset, dx, dy, blur, spread, color ? normalizeHex(color) : undefined)]
+          };
         } catch (e) {
           // ignore token building errors and proceed without substitution
         }

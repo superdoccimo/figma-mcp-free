@@ -138,7 +138,7 @@ function collectSpacingAndSizeTokens(root: AnyNode): { spacing: Record<string, T
   return { spacing, size };
 }
 
-function collectTypographyTokens(root: AnyNode): DesignTokens["typography"] {
+function collectTypographyTokens(root: AnyNode): NonNullable<DesignTokens["typography"]> {
   const out: NonNullable<DesignTokens["typography"]> = {};
   const stack: Array<{ node: AnyNode; path: string[] }> = [{ node: root, path: [normalizeName(root.name) || root.id] }];
   while (stack.length) {

@@ -12,7 +12,7 @@
     "@figma-mcp-free/code-generator": "workspace:*",
     "@figma-mcp-free/design-tokens": "workspace:*",
     "@figma-mcp-free/figma-client": "workspace:*",
-    "@modelcontextprotocol/sdk": "^0.1.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^3.22.0"
   },
   "devDependencies": {

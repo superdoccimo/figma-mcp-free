@@ -19,7 +19,7 @@ FigmaはMCP（Model Context Protocol）対応サーバーをDev Mode有料プラ
 | MongoDB | SSPLでクラウド制限 | FerretDB, DocumentDB |
 | Supabase | OSSスタックの有料パッケージ | 直接OSS構成を運用 |
 
-![Comparison chart for enclosure strategies](../../figma_comparison_chart_en.svg)
+![Comparison chart for enclosure strategies](../../../docs/assets/figma_comparison_chart_en.svg)
 
 > **メッセージ:** 「無料の技術を束ねて課金する」流れに対し、コミュニティは常にオープンな代替で応えてきました。figma-mcp-freeもその一つです。
 
@@ -60,7 +60,7 @@ pnpm --filter figma-mcp-free dev -- generate <FILE_ID> <NODE_ID> --framework rea
 
 MCPサーバーとして使う場合は、`FIGMA_TOKEN` を環境変数に設定した上で `node packages/mcp-server/dist/index.js` を起動すると、標準入出力（STDIO）で接続できます。
 
-![Architecture diagram for figma-mcp-free](../../figma_architecture_diagram_en.svg)
+![Architecture diagram for figma-mcp-free](../../../docs/assets/figma_architecture_diagram_en.svg)
 
 ## 4. Claude Code / Codex CLI との統合
 
@@ -95,7 +95,7 @@ env     = { FIGMA_API_KEY = "figd_xxx" }
 
 GitHubではこのガイドを「今すぐ試せるチェックリスト」として整理し、初学者でも迷わずセットアップできるよう構成しています。
 
-![Workflow timeline diagram showing setup, token export, generation, and integration](../../figma_workflow_timeline_en.svg)
+![Workflow timeline diagram showing setup, token export, generation, and integration](../../../docs/assets/figma_workflow_timeline_en.svg)
 
 ## 6. トラブルシューティング・チェックリスト
 
