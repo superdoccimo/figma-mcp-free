@@ -118,7 +118,15 @@ export class FigmaClient {
   }
 
   async listFrames(fileId: string): Promise<FigmaNode[]> {
-    const file = await this.getFile(fileId);
+    // Use depth=2 to fetch only pages + their direct children (avoids downloading full file)
+    const url = `${this.baseUrl}/files/${encodeURIComponent(fileId)}?depth=2`;
+    const res = await this.ensureFetch()(url, { headers: this.headers() });
+    if (!res.ok) {
+      let detail: unknown;
+      try { detail = await res.json(); } catch {}
+      throw new FigmaApiError(`Failed to fetch file: ${res.status}`, res.status, detail);
+    }
+    const file = await res.json() as FigmaFile;
     const frames: FigmaNode[] = [];
     const stack: FigmaNode[] = [file.document];
     while (stack.length) {
