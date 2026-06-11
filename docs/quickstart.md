@@ -43,17 +43,6 @@ If the environment variable `FIGMA_TOKEN` is present it takes precedence at runt
 
 Use a Figma `/file` or `/design` link to a selected frame or component. `/slides` links are not supported by this REST API workflow.
 
-Figma URLs often show node IDs as `node-id=1-2`. Convert that value to `1:2` when passing it to the API or CLI.
-
-Optional verification:
-
-```bash
-curl -H "X-Figma-Token: $FIGMA_TOKEN" \
-  "https://api.figma.com/v1/files/<FILE_ID>/nodes?ids=<NODE_ID>"
-```
-
-If JSON is returned, the token, file ID, and node ID are aligned.
-
 ## 5. Try the CLI
 
 ```bash

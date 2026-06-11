@@ -74,6 +74,10 @@ export class FigmaApiError extends Error {
   }
 }
 
+export function normalizeFigmaNodeId(nodeId: string): string {
+  return nodeId.trim().replaceAll("-", ":");
+}
+
 export class FigmaClient {
   private baseUrl: string;
 
@@ -130,7 +134,8 @@ export class FigmaClient {
   }
 
   async getNode(fileId: string, nodeId: string): Promise<FigmaNode | undefined> {
-    const url = `${this.baseUrl}/files/${encodeURIComponent(fileId)}/nodes?ids=${encodeURIComponent(nodeId)}`;
+    const normalizedNodeId = normalizeFigmaNodeId(nodeId);
+    const url = `${this.baseUrl}/files/${encodeURIComponent(fileId)}/nodes?ids=${encodeURIComponent(normalizedNodeId)}`;
     const res = await this.ensureFetch()(url, { headers: this.headers() });
     if (!res.ok) {
       let detail: unknown;
@@ -138,7 +143,7 @@ export class FigmaClient {
       throw new FigmaApiError(`Failed to fetch node: ${res.status}`, res.status, detail);
     }
     const json = await res.json() as FigmaNodesResponse;
-    const entry = json.nodes?.[nodeId];
+    const entry = json.nodes?.[normalizedNodeId] ?? json.nodes?.[nodeId];
     return entry?.document as FigmaNode | undefined;
   }
 }

@@ -37,29 +37,19 @@ That command does not call the Figma API. It is the fastest first-run check for 
 
 1. In Figma, select the target frame or component and copy a link to the selection.
 2. Use a `/design` or `/file` URL. `/slides` links are not supported by the Figma REST API.
-3. Convert URL node IDs from `node-id=1-2` to `1:2` when passing them to the API or CLI.
-4. Store your token locally:
+3. Store your token locally:
 
 ```bash
 pnpm --filter figma-mcp-free dev -- init
 ```
 
-5. Run the CLI:
+4. Run the CLI:
 
 ```bash
 pnpm --filter figma-mcp-free dev -- components <FILE_ID> --query Button --limit 5
 pnpm --filter figma-mcp-free dev -- export-tokens <FILE_ID> > tokens.json
 pnpm --filter figma-mcp-free dev -- generate <FILE_ID> <NODE_ID> --framework react --use-tokens ./tokens.json > out.jsx
 ```
-
-Quick API check:
-
-```bash
-curl -H "X-Figma-Token: $FIGMA_TOKEN" \
-  "https://api.figma.com/v1/files/<FILE_ID>/nodes?ids=<NODE_ID>"
-```
-
-If JSON is returned, the token, file ID, and node ID are aligned.
 
 ## Supported Links And Limits
 
@@ -68,7 +58,6 @@ If JSON is returned, the token, file ID, and node ID are aligned.
 | `/file/<FILE_ID>` | Supported | Use with a selected `node-id` when generating code from one node. |
 | `/design/<FILE_ID>` | Supported | Same REST file/node access as `/file`. |
 | `/slides/...` | Not supported | Figma's REST API does not expose slide node information for this workflow. |
-| `node-id=1-2` | Needs conversion | Figma URLs often use hyphens; API and CLI calls require `1:2`. |
 | Write operations | Not supported | REST access is read-only. Use the Figma Plugin API or editor workflows for writes. |
 | Images API URLs | Temporary | Good for development checks, but they expire and should not be committed as README or production assets. |
 
