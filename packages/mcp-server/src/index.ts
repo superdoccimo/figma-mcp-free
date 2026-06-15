@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { FigmaClient } from "@figma-mcp-free/figma-client";
+import { FigmaClient, resolveFigmaReference } from "@figma-mcp-free/figma-client";
 import { toDesignTokens, buildCssVarIndex, buildTypographyVarIndex, buildSizeSpacingVarIndex, buildShadowVarIndex, shadowKey, normalizeHex } from "@figma-mcp-free/design-tokens";
 import { generateCode, type Framework, type GenerateOptions } from "@figma-mcp-free/code-generator";
 import { getToken as getConfigToken } from "@figma-mcp-free/config";
@@ -12,18 +12,29 @@ function getToken(): string {
   return token;
 }
 
+type FigmaInput = { fileId?: string; figmaUrl?: string; nodeId?: string };
+
+function resolveInput(input: FigmaInput) {
+  const fileIdOrUrl = input.figmaUrl ?? input.fileId;
+  if (!fileIdOrUrl) {
+    throw new Error("Provide fileId or figmaUrl.");
+  }
+  return resolveFigmaReference(fileIdOrUrl, input.nodeId);
+}
+
 async function main() {
   const server = new McpServer({ name: "figma-mcp-free", version: "0.1.0" });
 
   server.registerTool(
     "get_file",
     {
-      description: "Get a Figma file by ID",
-      inputSchema: { fileId: z.string() }
+      description: "Get a Figma file by fileId or Figma /file or /design URL",
+      inputSchema: { fileId: z.string().optional(), figmaUrl: z.string().optional() }
     },
-    async ({ fileId }) => {
+    async ({ fileId, figmaUrl }: { fileId?: string; figmaUrl?: string }) => {
+      const ref = resolveInput({ fileId, figmaUrl });
       const client = new FigmaClient({ token: getToken() });
-      const file = await client.getFile(fileId);
+      const file = await client.getFile(ref.fileId);
       return { content: [{ type: "text", text: JSON.stringify(file) }] };
     }
   );
@@ -31,12 +42,13 @@ async function main() {
   server.registerTool(
     "get_components",
     {
-      description: "List components for a Figma file (normalized)",
-      inputSchema: { fileId: z.string(), q: z.string().optional(), limit: z.number().int().positive().max(1000).optional() }
+      description: "List components for a Figma file by fileId or Figma /file or /design URL",
+      inputSchema: { fileId: z.string().optional(), figmaUrl: z.string().optional(), q: z.string().optional(), limit: z.number().int().positive().max(1000).optional() }
     },
-    async ({ fileId, q, limit }: { fileId: string; q?: string; limit?: number }) => {
+    async ({ fileId, figmaUrl, q, limit }: { fileId?: string; figmaUrl?: string; q?: string; limit?: number }) => {
+      const ref = resolveInput({ fileId, figmaUrl });
       const client = new FigmaClient({ token: getToken() });
-      const raw = await client.getComponents(fileId);
+      const raw = await client.getComponents(ref.fileId);
       let items = raw.meta.components.map(c => ({ key: c.key, nodeId: c.node_id, name: c.name }));
       if (q) {
         const low = q.toLowerCase();
@@ -50,12 +62,13 @@ async function main() {
   server.registerTool(
     "list_frames",
     {
-      description: "List frame nodes in a file",
-      inputSchema: { fileId: z.string() }
+      description: "List frame nodes in a Figma file by fileId or Figma /file or /design URL",
+      inputSchema: { fileId: z.string().optional(), figmaUrl: z.string().optional() }
     },
-    async ({ fileId }) => {
+    async ({ fileId, figmaUrl }: { fileId?: string; figmaUrl?: string }) => {
+      const ref = resolveInput({ fileId, figmaUrl });
       const client = new FigmaClient({ token: getToken() });
-      const frames = await client.listFrames(fileId);
+      const frames = await client.listFrames(ref.fileId);
       return { content: [{ type: "text", text: JSON.stringify(frames) }] };
     }
   );
@@ -63,12 +76,13 @@ async function main() {
   server.registerTool(
     "export_tokens",
     {
-      description: "Export design tokens from a file",
-      inputSchema: { fileId: z.string() }
+      description: "Export design tokens from a Figma file by fileId or Figma /file or /design URL",
+      inputSchema: { fileId: z.string().optional(), figmaUrl: z.string().optional() }
     },
-    async ({ fileId }) => {
+    async ({ fileId, figmaUrl }: { fileId?: string; figmaUrl?: string }) => {
+      const ref = resolveInput({ fileId, figmaUrl });
       const client = new FigmaClient({ token: getToken() });
-      const file = await client.getFile(fileId);
+      const file = await client.getFile(ref.fileId);
       const tokens = toDesignTokens(file);
       return { content: [{ type: "text", text: JSON.stringify(tokens, null, 2) }] };
     }
@@ -77,18 +91,23 @@ async function main() {
   server.registerTool(
     "generate_code",
     {
-      description: "Generate UI code for a node in a file (optionally with tokens)",
+      description: "Generate UI code from a file/node ID pair or a Figma URL with node-id",
       inputSchema: {
-        fileId: z.string(),
-        nodeId: z.string(),
+        fileId: z.string().optional(),
+        figmaUrl: z.string().optional(),
+        nodeId: z.string().optional(),
         framework: z.enum(["react", "vue", "svelte", "html"]),
         tokens: z.any().optional(),
         varPrefix: z.string().optional()
       }
     },
-    async ({ fileId, nodeId, framework, tokens, varPrefix }: { fileId: string; nodeId: string; framework: Framework; tokens?: unknown; varPrefix?: string }) => {
+    async ({ fileId, figmaUrl, nodeId, framework, tokens, varPrefix }: { fileId?: string; figmaUrl?: string; nodeId?: string; framework: Framework; tokens?: unknown; varPrefix?: string }) => {
+      const ref = resolveInput({ fileId, figmaUrl, nodeId });
+      if (!ref.nodeId) {
+        throw new Error("nodeId is required unless figmaUrl includes ?node-id=...");
+      }
       const client = new FigmaClient({ token: getToken() });
-      const node = await client.getNode(fileId, nodeId);
+      const node = await client.getNode(ref.fileId, ref.nodeId);
       let opts: GenerateOptions | undefined;
       if (tokens && typeof tokens === "object") {
         try {
@@ -114,7 +133,7 @@ async function main() {
           // ignore token building errors and proceed without substitution
         }
       }
-      const code = generateCode(node ?? { id: nodeId }, framework, opts);
+      const code = generateCode(node ?? { id: ref.nodeId, name: ref.nodeId, type: "GROUP" }, framework, opts);
       return { content: [{ type: "text", text: code }] };
     }
   );

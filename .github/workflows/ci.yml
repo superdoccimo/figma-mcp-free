@@ -30,6 +30,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile=false
 
-      - name: Build all packages
-        run: pnpm -r run build
+      - name: Run repository checks
+        run: pnpm run check
 

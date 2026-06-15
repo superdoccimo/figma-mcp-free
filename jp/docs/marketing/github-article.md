@@ -48,15 +48,18 @@ pnpm install && pnpm -r build
 # 2. トークン保存（CLI設定）
 pnpm --filter figma-mcp-free dev -- init --token figd_xxxxxxxxx
 
-# 3. コンポーネント確認
-pnpm --filter figma-mcp-free dev -- components <FILE_ID> --query Button --limit 5
+# 3. Figmaの選択リンクをそのまま使う
+FIGMA_URL="https://www.figma.com/design/<FILE_ID>/...?node-id=1-2"
+pnpm --filter figma-mcp-free dev -- components "$FIGMA_URL" --query Button --limit 5
 
 # 4. トークン抽出
-pnpm --filter figma-mcp-free dev -- export-tokens <FILE_ID> > tokens.json
+pnpm --filter figma-mcp-free dev -- export-tokens "$FIGMA_URL" > tokens.json
 
 # 5. コード生成（トークン適用）
-pnpm --filter figma-mcp-free dev -- generate <FILE_ID> <NODE_ID> --framework react --use-tokens tokens.json > Button.tsx
+pnpm --filter figma-mcp-free dev -- generate "$FIGMA_URL" --framework react --use-tokens tokens.json > Button.tsx
 ```
+
+`node-id=1-2` はCLI側で `1:2` に自動正規化されるため、初回セットアップではURLをそのまま貼るだけで進められます。
 
 MCPサーバーとして使う場合は、`FIGMA_TOKEN` を環境変数に設定した上で `node packages/mcp-server/dist/index.js` を起動すると、標準入出力（STDIO）で接続できます。
 

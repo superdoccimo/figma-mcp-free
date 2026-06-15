@@ -39,11 +39,11 @@ pnpm --filter figma-mcp-free dev -- config get token
 
 If the environment variable `FIGMA_TOKEN` is present it takes precedence at runtime.
 
-## 4. Prepare a Figma node ID
+## 4. Prepare a Figma URL
 
 Use a Figma `/file` or `/design` link to a selected frame or component. `/slides` links are not supported by this REST API workflow.
 
-Figma URLs often show node IDs as `node-id=1-2`. Convert that value to `1:2` when passing it to the API or CLI.
+The CLI and MCP tools accept the full Figma URL and normalize URL node IDs such as `node-id=1-2` to the API format (`1:2`) automatically.
 
 Optional verification:
 
@@ -57,9 +57,16 @@ If JSON is returned, the token, file ID, and node ID are aligned.
 ## 5. Try the CLI
 
 ```bash
-pnpm --filter figma-mcp-free dev -- components <FILE_ID> --limit 3
-pnpm --filter figma-mcp-free dev -- export-tokens <FILE_ID> > tokens.json
-pnpm --filter figma-mcp-free dev -- generate <FILE_ID> <NODE_ID> --framework react --use-tokens ./tokens.json
+FIGMA_URL="https://www.figma.com/design/<FILE_ID>/...?node-id=1-2"
+pnpm --filter figma-mcp-free dev -- components "$FIGMA_URL" --limit 3
+pnpm --filter figma-mcp-free dev -- export-tokens "$FIGMA_URL" > tokens.json
+pnpm --filter figma-mcp-free dev -- generate "$FIGMA_URL" --framework react --use-tokens ./tokens.json
+```
+
+You can still pass `<FILE_ID> <NODE_ID>` directly:
+
+```bash
+pnpm --filter figma-mcp-free dev -- generate <FILE_ID> <NODE_ID> --framework react
 ```
 
 ## 6. Start the MCP server
@@ -83,5 +90,7 @@ The server exposes these MCP tools:
 - `list_frames`
 - `generate_code`
 - `export_tokens`
+
+Each tool accepts either `fileId` or `figmaUrl`. `generate_code` can read `nodeId` from the URL when it includes `?node-id=...`.
 
 Refer to `docs/troubleshooting.md` if calls fail due to token scopes, rate limiting, or manifest configuration issues.

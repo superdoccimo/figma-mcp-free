@@ -16,7 +16,7 @@ The Figma REST API does not expose slide node information for this workflow.
 ## 2. Node ID format
 
 ### Symptom
-- A Figma URL works in the browser, but the API call cannot find the node.
+- A manually copied node ID works in the browser, but a direct REST API call cannot find the node.
 
 ### Fix
 Figma URLs often use hyphens in node IDs:
@@ -31,7 +31,7 @@ The API and CLI expect colons:
 1:2
 ```
 
-Convert the value before running `generate` or direct REST calls.
+When you pass the full Figma URL to the CLI or MCP `figmaUrl` input, `figma-mcp-free` normalizes this automatically. Convert the value yourself only when calling the REST API directly or passing `<NODE_ID>` manually.
 
 ## 3. Authentication issues
 

@@ -15,6 +15,7 @@ This does not replace Figma Dev Mode or any official write-capable workflow. The
 - Runs as an MCP STDIO server for AI coding tools.
 - Provides a CLI for component search, code generation, and token export.
 - Reads Figma `/file` and `/design` links through a Personal Access Token.
+- Accepts full Figma URLs and normalizes `node-id=1-2` to `1:2` automatically.
 - Converts Figma node JSON into React, Vue, Svelte, or HTML starter code.
 - Exports colors, spacing, sizes, typography, and shadows as W3C Design Tokens.
 - Includes an offline demo path that works without a Figma token.
@@ -37,20 +38,22 @@ That command does not call the Figma API. It is the fastest first-run check for 
 
 1. In Figma, select the target frame or component and copy a link to the selection.
 2. Use a `/design` or `/file` URL. `/slides` links are not supported by the Figma REST API.
-3. Convert URL node IDs from `node-id=1-2` to `1:2` when passing them to the API or CLI.
-4. Store your token locally:
+3. Store your token locally:
 
 ```bash
 pnpm --filter figma-mcp-free dev -- init
 ```
 
-5. Run the CLI:
+4. Run the CLI with the full Figma URL:
 
 ```bash
-pnpm --filter figma-mcp-free dev -- components <FILE_ID> --query Button --limit 5
-pnpm --filter figma-mcp-free dev -- export-tokens <FILE_ID> > tokens.json
-pnpm --filter figma-mcp-free dev -- generate <FILE_ID> <NODE_ID> --framework react --use-tokens ./tokens.json > out.jsx
+FIGMA_URL="https://www.figma.com/design/<FILE_ID>/...?node-id=1-2"
+pnpm --filter figma-mcp-free dev -- components "$FIGMA_URL" --query Button --limit 5
+pnpm --filter figma-mcp-free dev -- export-tokens "$FIGMA_URL" > tokens.json
+pnpm --filter figma-mcp-free dev -- generate "$FIGMA_URL" --framework react --use-tokens ./tokens.json > out.jsx
 ```
+
+Manual `<FILE_ID> <NODE_ID>` calls still work. When you pass a node ID manually, use the API format (`1:2`), or let the CLI normalize `1-2`.
 
 Quick API check:
 
@@ -68,7 +71,7 @@ If JSON is returned, the token, file ID, and node ID are aligned.
 | `/file/<FILE_ID>` | Supported | Use with a selected `node-id` when generating code from one node. |
 | `/design/<FILE_ID>` | Supported | Same REST file/node access as `/file`. |
 | `/slides/...` | Not supported | Figma's REST API does not expose slide node information for this workflow. |
-| `node-id=1-2` | Needs conversion | Figma URLs often use hyphens; API and CLI calls require `1:2`. |
+| `node-id=1-2` | Auto-normalized | The CLI and MCP helpers normalize full URLs to API format (`1:2`). |
 | Write operations | Not supported | REST access is read-only. Use the Figma Plugin API or editor workflows for writes. |
 | Images API URLs | Temporary | Good for development checks, but they expire and should not be committed as README or production assets. |
 
@@ -92,6 +95,8 @@ Exposed MCP tools:
 - `export_tokens`
 
 Example client configs live in [`examples/codex-config/mcp.json`](examples/codex-config/mcp.json) and [`examples/cursor-config/mcp.json`](examples/cursor-config/mcp.json).
+
+MCP tools accept either `fileId` or `figmaUrl`. `generate_code` can read `nodeId` from a `figmaUrl` that includes `?node-id=...`, or from an explicit `nodeId` argument.
 
 ## Packages
 

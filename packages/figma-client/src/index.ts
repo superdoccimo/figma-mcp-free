@@ -3,6 +3,73 @@ export interface FigmaClientOptions {
   baseUrl?: string; // default https://api.figma.com/v1
 }
 
+export interface FigmaReference {
+  fileId: string;
+  nodeId?: string;
+  urlType?: "file" | "design";
+}
+
+export function normalizeFigmaNodeId(nodeId: string): string {
+  let decoded = nodeId.trim();
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    // Keep the original string if it is not valid percent-encoding.
+  }
+  return decoded.replace(/-/g, ":");
+}
+
+export function parseFigmaUrl(value: string): FigmaReference | undefined {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return undefined;
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  if (hostname !== "figma.com" && !hostname.endsWith(".figma.com")) {
+    return undefined;
+  }
+
+  const parts = url.pathname.split("/").filter(Boolean);
+  const kindIndex = parts.findIndex((part) => part === "file" || part === "design" || part === "slides");
+  const kind = parts[kindIndex];
+  if (kind === "slides") {
+    throw new Error("/slides links are not supported by the Figma REST API. Use a /file or /design link to the selected frame.");
+  }
+  if (kind !== "file" && kind !== "design") {
+    throw new Error("Figma URL must contain /file/<FILE_ID> or /design/<FILE_ID>.");
+  }
+
+  const fileId = parts[kindIndex + 1];
+  if (!fileId) {
+    throw new Error("Figma URL is missing the file ID after /file or /design.");
+  }
+
+  const rawNodeId = url.searchParams.get("node-id") ?? url.searchParams.get("node_id") ?? undefined;
+  return {
+    fileId,
+    nodeId: rawNodeId ? normalizeFigmaNodeId(rawNodeId) : undefined,
+    urlType: kind
+  };
+}
+
+export function resolveFigmaReference(fileIdOrUrl: string, nodeId?: string): FigmaReference {
+  const parsed = parseFigmaUrl(fileIdOrUrl);
+  if (parsed) {
+    return {
+      ...parsed,
+      nodeId: nodeId ? normalizeFigmaNodeId(nodeId) : parsed.nodeId
+    };
+  }
+
+  return {
+    fileId: fileIdOrUrl,
+    nodeId: nodeId ? normalizeFigmaNodeId(nodeId) : undefined
+  };
+}
+
 export interface FigmaNode {
   id: string;
   name: string;

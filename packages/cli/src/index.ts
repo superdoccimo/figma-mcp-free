@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { getConfigPath, readConfig, writeConfig, getToken as getCfgToken } from "@figma-mcp-free/config";
-import { FigmaClient } from "@figma-mcp-free/figma-client";
+import { FigmaClient, resolveFigmaReference } from "@figma-mcp-free/figma-client";
 import { toDesignTokens } from "@figma-mcp-free/design-tokens";
 import { generateCode, type Framework } from "@figma-mcp-free/code-generator";
 import { readFileSync } from "node:fs";
@@ -77,20 +77,25 @@ program.command("init")
   });
 
 program.command("generate")
-  .description("Generate code from component")
-  .argument("<fileId>")
-  .argument("<nodeId>")
+  .description("Generate code from a Figma file/node ID pair or a Figma URL with node-id")
+  .argument("<fileIdOrUrl>")
+  .argument("[nodeId]")
   .option("--framework <name>", "react|vue|svelte|html", "react")
   .option("--use-tokens <path>", "use W3C tokens JSON to substitute colors with CSS variables")
   .option("--var-prefix <prefix>", "CSS var prefix (default --)")
-  .action(async (fileId: string, nodeId: string, opts: { framework: Framework; useTokens?: string; varPrefix?: string }) => {
+  .action(async (fileIdOrUrl: string, nodeId: string | undefined, opts: { framework: Framework; useTokens?: string; varPrefix?: string }) => {
     const token = getCfgToken();
     if (!token) {
       console.error("Token not set. Run: figma-mcp-free init (or export FIGMA_TOKEN).");
       process.exit(1);
     }
+    const ref = resolveFigmaReference(fileIdOrUrl, nodeId);
+    if (!ref.nodeId) {
+      console.error("Node ID missing. Pass <NODE_ID> or use a Figma /file or /design URL that includes ?node-id=...");
+      process.exit(1);
+    }
     const client = new FigmaClient({ token });
-    const node = await client.getNode(fileId, nodeId);
+    const node = await client.getNode(ref.fileId, ref.nodeId);
     let colorVar: ((hex: string) => string | undefined) | undefined;
     let varOpts: any;
     if (opts.useTokens) {
@@ -120,7 +125,7 @@ program.command("generate")
       }
     }
     const code = generateCode(
-      node ?? { id: nodeId, name: nodeId, type: "GROUP" },
+      node ?? { id: ref.nodeId, name: ref.nodeId, type: "GROUP" },
       opts.framework,
       { colorVar, ...(varOpts || {}) }
     );
@@ -170,33 +175,35 @@ program.command("generate-from-json")
 
 program.command("export-tokens")
   .description("Export design tokens from a file (W3C format minimal)")
-  .argument("<fileId>")
-  .action(async (fileId: string) => {
+  .argument("<fileIdOrUrl>")
+  .action(async (fileIdOrUrl: string) => {
     const token = getCfgToken();
     if (!token) {
       console.error("Token not set. Run: figma-mcp-free init (or export FIGMA_TOKEN).");
       process.exit(1);
     }
+    const ref = resolveFigmaReference(fileIdOrUrl);
     const client = new FigmaClient({ token });
-    const file = await client.getFile(fileId);
+    const file = await client.getFile(ref.fileId);
     const tokens = toDesignTokens(file);
     console.log(JSON.stringify(tokens, null, 2));
   });
 
 program.command("components")
   .description("List components in a file")
-  .argument("<fileId>")
+  .argument("<fileIdOrUrl>")
   .option("-q, --query <query>", "filter by name contains")
   .option("-l, --limit <n>", "limit number of results", (v) => parseInt(v, 10))
   .option("--json", "output JSON")
-  .action(async (fileId: string, opts: { query?: string; limit?: number; json?: boolean }) => {
+  .action(async (fileIdOrUrl: string, opts: { query?: string; limit?: number; json?: boolean }) => {
     const token = getCfgToken();
     if (!token) {
       console.error("Token not set. Run: figma-mcp-free init (or export FIGMA_TOKEN).");
       process.exit(1);
     }
+    const ref = resolveFigmaReference(fileIdOrUrl);
     const client = new FigmaClient({ token });
-    const raw = await client.getComponents(fileId);
+    const raw = await client.getComponents(ref.fileId);
     let items = raw.meta.components.map(c => ({ key: c.key, nodeId: c.node_id, name: c.name }));
     if (opts.query) {
       const q = opts.query.toLowerCase();
