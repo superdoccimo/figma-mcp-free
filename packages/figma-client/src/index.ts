@@ -162,8 +162,9 @@ export class FigmaClient {
     return fetch;
   }
 
-  async getFile(fileId: string): Promise<FigmaFile> {
-    const url = `${this.baseUrl}/files/${encodeURIComponent(fileId)}`;
+  async getFile(fileId: string, depth?: number): Promise<FigmaFile> {
+    const params = depth !== undefined ? `?depth=${depth}` : "";
+    const url = `${this.baseUrl}/files/${encodeURIComponent(fileId)}${params}`;
     const res = await this.ensureFetch()(url, { headers: this.headers() });
     if (!res.ok) {
       let detail: unknown;
