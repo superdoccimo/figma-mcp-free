@@ -1,6 +1,8 @@
 export interface FigmaClientOptions {
   token: string;
   baseUrl?: string; // default https://api.figma.com/v1
+  maxRetries?: number; // default 2 for 429/5xx responses
+  retryDelayMs?: number; // default 1000, exponential backoff base
 }
 
 export interface FigmaReference {
@@ -141,6 +143,27 @@ export class FigmaApiError extends Error {
   }
 }
 
+const DEFAULT_MAX_RETRIES = 2;
+const DEFAULT_RETRY_DELAY_MS = 1000;
+const MAX_RETRY_DELAY_MS = 30000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseRetryAfterMs(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) {
+    return Math.max(0, seconds * 1000);
+  }
+  const dateMs = Date.parse(value);
+  if (Number.isFinite(dateMs)) {
+    return Math.max(0, dateMs - Date.now());
+  }
+  return undefined;
+}
+
 export class FigmaClient {
   private baseUrl: string;
 
@@ -162,31 +185,52 @@ export class FigmaClient {
     return fetch;
   }
 
-  async getFile(fileId: string, depth?: number): Promise<FigmaFile> {
-    const params = depth !== undefined ? `?depth=${depth}` : "";
-    const url = `${this.baseUrl}/files/${encodeURIComponent(fileId)}${params}`;
-    const res = await this.ensureFetch()(url, { headers: this.headers() });
-    if (!res.ok) {
+  private shouldRetry(status: number): boolean {
+    return status === 429 || (status >= 500 && status <= 599);
+  }
+
+  private retryDelay(attempt: number, retryAfter: string | null): number {
+    const fromHeader = parseRetryAfterMs(retryAfter);
+    if (fromHeader !== undefined) return Math.min(fromHeader, MAX_RETRY_DELAY_MS);
+
+    const base = Math.max(0, this.opts.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS);
+    return Math.min(base * 2 ** attempt, MAX_RETRY_DELAY_MS);
+  }
+
+  private async requestJson<T>(url: string, errorPrefix: string): Promise<T> {
+    const maxRetries = Math.max(0, this.opts.maxRetries ?? DEFAULT_MAX_RETRIES);
+    for (let attempt = 0; ; attempt++) {
+      const res = await this.ensureFetch()(url, { headers: this.headers() });
+      if (res.ok) {
+        return res.json() as Promise<T>;
+      }
+
       let detail: unknown;
       try { detail = await res.json(); } catch {}
-      throw new FigmaApiError(`Failed to fetch file: ${res.status}`, res.status, detail);
+
+      if (attempt < maxRetries && this.shouldRetry(res.status)) {
+        await sleep(this.retryDelay(attempt, res.headers.get("retry-after")));
+        continue;
+      }
+
+      const hint = res.status === 429 ? " (rate limited; retry later or reduce request volume)" : "";
+      throw new FigmaApiError(`${errorPrefix}: ${res.status}${hint}`, res.status, detail);
     }
-    return res.json() as Promise<FigmaFile>;
+  }
+
+  async getFile(fileId: string, depth?: number): Promise<FigmaFile> {
+    const params = depth !== undefined ? `?depth=${encodeURIComponent(String(depth))}` : "";
+    const url = `${this.baseUrl}/files/${encodeURIComponent(fileId)}${params}`;
+    return this.requestJson<FigmaFile>(url, "Failed to fetch file");
   }
 
   async getComponents(fileId: string): Promise<FigmaComponentsResponse> {
     const url = `${this.baseUrl}/files/${encodeURIComponent(fileId)}/components`;
-    const res = await this.ensureFetch()(url, { headers: this.headers() });
-    if (!res.ok) {
-      let detail: unknown;
-      try { detail = await res.json(); } catch {}
-      throw new FigmaApiError(`Failed to fetch components: ${res.status}`, res.status, detail);
-    }
-    return res.json() as Promise<FigmaComponentsResponse>;
+    return this.requestJson<FigmaComponentsResponse>(url, "Failed to fetch components");
   }
 
-  async listFrames(fileId: string): Promise<FigmaNode[]> {
-    const file = await this.getFile(fileId);
+  async listFrames(fileId: string, depth?: number): Promise<FigmaNode[]> {
+    const file = await this.getFile(fileId, depth);
     const frames: FigmaNode[] = [];
     const stack: FigmaNode[] = [file.document];
     while (stack.length) {
@@ -198,15 +242,10 @@ export class FigmaClient {
   }
 
   async getNode(fileId: string, nodeId: string): Promise<FigmaNode | undefined> {
-    const url = `${this.baseUrl}/files/${encodeURIComponent(fileId)}/nodes?ids=${encodeURIComponent(nodeId)}`;
-    const res = await this.ensureFetch()(url, { headers: this.headers() });
-    if (!res.ok) {
-      let detail: unknown;
-      try { detail = await res.json(); } catch {}
-      throw new FigmaApiError(`Failed to fetch node: ${res.status}`, res.status, detail);
-    }
-    const json = await res.json() as FigmaNodesResponse;
-    const entry = json.nodes?.[nodeId];
+    const normalizedNodeId = normalizeFigmaNodeId(nodeId);
+    const url = `${this.baseUrl}/files/${encodeURIComponent(fileId)}/nodes?ids=${encodeURIComponent(normalizedNodeId)}`;
+    const json = await this.requestJson<FigmaNodesResponse>(url, "Failed to fetch node");
+    const entry = json.nodes?.[normalizedNodeId] ?? json.nodes?.[nodeId];
     return entry?.document as FigmaNode | undefined;
   }
 }

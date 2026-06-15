@@ -93,4 +93,6 @@ The server exposes these MCP tools:
 
 Each tool accepts either `fileId` or `figmaUrl`. `generate_code` can read `nodeId` from the URL when it includes `?node-id=...`.
 
+For large files, MCP `get_file` and `list_frames` accept an optional `depth` value. For example, `depth: 2` limits the file payload to pages and their direct children.
+
 Refer to `docs/troubleshooting.md` if calls fail due to token scopes, rate limiting, or manifest configuration issues.

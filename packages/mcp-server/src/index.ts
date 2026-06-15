@@ -29,12 +29,12 @@ async function main() {
     "get_file",
     {
       description: "Get a Figma file by fileId or Figma /file or /design URL",
-      inputSchema: { fileId: z.string().optional(), figmaUrl: z.string().optional() }
+      inputSchema: { fileId: z.string().optional(), figmaUrl: z.string().optional(), depth: z.number().int().positive().optional() }
     },
-    async ({ fileId, figmaUrl }: { fileId?: string; figmaUrl?: string }) => {
+    async ({ fileId, figmaUrl, depth }: { fileId?: string; figmaUrl?: string; depth?: number }) => {
       const ref = resolveInput({ fileId, figmaUrl });
       const client = new FigmaClient({ token: getToken() });
-      const file = await client.getFile(ref.fileId);
+      const file = await client.getFile(ref.fileId, depth);
       return { content: [{ type: "text", text: JSON.stringify(file) }] };
     }
   );
@@ -63,12 +63,12 @@ async function main() {
     "list_frames",
     {
       description: "List frame nodes in a Figma file by fileId or Figma /file or /design URL",
-      inputSchema: { fileId: z.string().optional(), figmaUrl: z.string().optional() }
+      inputSchema: { fileId: z.string().optional(), figmaUrl: z.string().optional(), depth: z.number().int().positive().optional() }
     },
-    async ({ fileId, figmaUrl }: { fileId?: string; figmaUrl?: string }) => {
+    async ({ fileId, figmaUrl, depth }: { fileId?: string; figmaUrl?: string; depth?: number }) => {
       const ref = resolveInput({ fileId, figmaUrl });
       const client = new FigmaClient({ token: getToken() });
-      const frames = await client.listFrames(ref.fileId);
+      const frames = await client.listFrames(ref.fileId, depth);
       return { content: [{ type: "text", text: JSON.stringify(frames) }] };
     }
   );

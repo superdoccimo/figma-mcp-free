@@ -76,10 +76,14 @@ Figma view URLs (`/file`, `/design`, `/slides`) are not direct image URLs.
 
 ### Symptom
 - CLI exits with `Rate limit exceeded`.
+- API calls fail with `Failed to fetch node: 429`.
 
 ### Fix
-- Wait 60 seconds and retry; batch requests with `--limit`.
+- `figma-mcp-free` retries `429` and temporary `5xx` responses with exponential backoff and respects Figma's `Retry-After` header.
+- If retries are exhausted, wait before running the command again; Personal Access Tokens are still subject to Figma API limits.
+- Batch requests with `--limit`.
 - Cache component metadata locally by piping CLI output into JSON files for repeated runs.
+- For large files in MCP workflows, pass `depth: 2` to `get_file` or `list_frames` when shallow structure is enough.
 
 ## 7. Missing node IDs
 

@@ -96,7 +96,7 @@ Exposed MCP tools:
 
 Example client configs live in [`examples/codex-config/mcp.json`](examples/codex-config/mcp.json) and [`examples/cursor-config/mcp.json`](examples/cursor-config/mcp.json).
 
-MCP tools accept either `fileId` or `figmaUrl`. `generate_code` can read `nodeId` from a `figmaUrl` that includes `?node-id=...`, or from an explicit `nodeId` argument.
+MCP tools accept either `fileId` or `figmaUrl`. `generate_code` can read `nodeId` from a `figmaUrl` that includes `?node-id=...`, or from an explicit `nodeId` argument. For large files, `get_file` and `list_frames` also accept an optional `depth` value to reduce payload size.
 
 ## Packages
 
@@ -134,6 +134,10 @@ Figma view URLs are not direct image assets. For generated websites and public d
 - Keep README diagrams in [`docs/assets/`](docs/assets/) and link them with relative paths.
 
 More details are in [docs/troubleshooting.md](docs/troubleshooting.md).
+
+## Rate Limits
+
+Figma Personal Access Tokens can still hit API rate limits. `figma-mcp-free` retries `429` and temporary `5xx` responses with exponential backoff and respects the `Retry-After` header when Figma sends one. If you still see `429`, wait before retrying and prefer narrower calls such as `get_file` / `list_frames` with `depth`.
 
 ## Documentation
 

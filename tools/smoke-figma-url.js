@@ -3,7 +3,10 @@
 const assert = require("node:assert/strict");
 
 (async () => {
-  const { parseFigmaUrl, resolveFigmaReference } = await import("../packages/figma-client/dist/index.js");
+  const { normalizeFigmaNodeId, parseFigmaUrl, resolveFigmaReference } = await import("../packages/figma-client/dist/index.js");
+
+  assert.equal(normalizeFigmaNodeId("1-2"), "1:2");
+  assert.equal(normalizeFigmaNodeId("10%3A20"), "10:20");
 
   assert.deepEqual(
     resolveFigmaReference("https://www.figma.com/design/ABC123/Example?node-id=1-2"),
