@@ -98,6 +98,12 @@ Example client configs live in [`examples/codex-config/mcp.json`](examples/codex
 
 MCP tools accept either `fileId` or `figmaUrl`. `generate_code` can read `nodeId` from a `figmaUrl` that includes `?node-id=...`, or from an explicit `nodeId` argument. For large files, `get_file` and `list_frames` also accept an optional `depth` value to reduce payload size.
 
+### Tool Vocabulary For Selected Layers
+
+`get_components` is not equivalent to the Figma remote MCP `get_design_context` tool. In this project, `get_components` lists component metadata from the Figma REST components endpoint, such as component keys, node IDs, and names. It does not collect selected-layer context for code generation.
+
+For selected-layer implementation, pass a `/design` or `/file` URL that includes `node-id=...` to `generate_code`. Use `get_file` with a narrow `depth`, or `list_frames`, when you need raw structure before generating code.
+
 ## Packages
 
 | Package | Purpose | Highlights |
