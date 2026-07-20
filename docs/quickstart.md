@@ -95,4 +95,17 @@ Each tool accepts either `fileId` or `figmaUrl`. `generate_code` can read `nodeI
 
 For large files, MCP `get_file` and `list_frames` accept an optional `depth` value. For example, `depth: 2` limits the file payload to pages and their direct children.
 
+### Choosing the right tool
+
+Use `generate_code` when you have a selected frame or component URL and want
+starter React, Vue, Svelte, or HTML output. Use `get_components` when you need
+the file's component inventory, such as component keys, names, and node IDs. It
+does not gather selected-layer implementation context. Use `get_file` with a
+small `depth`, or `list_frames`, when you need to inspect structure before
+choosing a node.
+
+Figma's hosted or desktop MCP server may expose different workflow-oriented
+tools. This project is a read-only REST API workflow, so match requests to the
+tool names above instead of assuming official server tool names are available.
+
 Refer to `docs/troubleshooting.md` if calls fail due to token scopes, rate limiting, or manifest configuration issues.
