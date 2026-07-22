@@ -16,6 +16,8 @@ This does not replace Figma Dev Mode or any official write-capable workflow. The
 - Provides a CLI for component search, code generation, and token export.
 - Reads Figma `/file` and `/design` links through a Personal Access Token.
 - Accepts full Figma URLs and normalizes `node-id=1-2` to `1:2` automatically.
+- Organizes a selected layer into compact, implementation-oriented JSON with `inspect_selection`.
+- Diagnoses local setup, URL parsing, token state, and optional API access with `doctor`.
 - Converts Figma node JSON into React, Vue, Svelte, or HTML starter code.
 - Exports colors, spacing, sizes, typography, and shadows as W3C Design Tokens.
 - Includes an offline demo path that works without a Figma token.
@@ -44,10 +46,18 @@ That command does not call the Figma API. It is the fastest first-run check for 
 pnpm --filter figma-mcp-free dev -- init
 ```
 
-4. Run the CLI with the full Figma URL:
+4. Check the local setup and selected layer access:
 
 ```bash
 FIGMA_URL="https://www.figma.com/design/<FILE_ID>/...?node-id=1-2"
+pnpm --filter figma-mcp-free dev -- doctor "$FIGMA_URL"
+# Add --json for machine-readable diagnostics.
+```
+
+5. Inspect or generate from the selected layer:
+
+```bash
+pnpm --filter figma-mcp-free dev -- inspect-selection "$FIGMA_URL" --depth 2 --max-children 20
 pnpm --filter figma-mcp-free dev -- components "$FIGMA_URL" --query Button --limit 5
 pnpm --filter figma-mcp-free dev -- export-tokens "$FIGMA_URL" > tokens.json
 pnpm --filter figma-mcp-free dev -- generate "$FIGMA_URL" --framework react --use-tokens ./tokens.json > out.jsx
@@ -89,6 +99,7 @@ The server reads `FIGMA_TOKEN` from the environment first. If the environment va
 Exposed MCP tools:
 
 - `get_file`
+- `inspect_selection`
 - `get_components`
 - `list_frames`
 - `generate_code`
@@ -96,13 +107,15 @@ Exposed MCP tools:
 
 Example client configs live in [`examples/codex-config/mcp.json`](examples/codex-config/mcp.json) and [`examples/cursor-config/mcp.json`](examples/cursor-config/mcp.json).
 
-MCP tools accept either `fileId` or `figmaUrl`. `generate_code` can read `nodeId` from a `figmaUrl` that includes `?node-id=...`, or from an explicit `nodeId` argument. For large files, `get_file` and `list_frames` also accept an optional `depth` value to reduce payload size.
+MCP tools accept either `fileId` or `figmaUrl`. `generate_code` and `inspect_selection` can read `nodeId` from a `figmaUrl` that includes `?node-id=...`, or from an explicit `nodeId` argument. `inspect_selection` also accepts optional `depth` and `maxChildren` limits. For large files, `get_file` and `list_frames` accept an optional `depth` value to reduce payload size.
 
 ### Tool Vocabulary For Selected Layers
 
 `get_components` is not equivalent to the Figma remote MCP `get_design_context` tool. In this project, `get_components` lists component metadata from the Figma REST components endpoint, such as component keys, node IDs, and names. It does not collect selected-layer context for code generation.
 
-For selected-layer implementation, pass a `/design` or `/file` URL that includes `node-id=...` to `generate_code`. Use `get_file` with a narrow `depth`, or `list_frames`, when you need raw structure before generating code.
+`inspect_selection` organizes the selected layer's REST API information into a small, stable structure for code implementation. It includes layout, paint, text, component, effect, image-reference presence, and bounded child summaries. It is not the official `get_design_context` tool and does not claim equivalent output.
+
+For direct starter code, pass a `/design` or `/file` URL that includes `node-id=...` to `generate_code`. Use `get_file` with a narrow `depth`, or `list_frames`, only when you need raw structure.
 
 ## Packages
 
@@ -112,7 +125,9 @@ For selected-layer implementation, pass a `/design` or `/file` URL that includes
 | `@figma-mcp-free/design-tokens` | Token exporter | W3C Design Tokens for color, size, spacing, typography, and shadow values. |
 | `@figma-mcp-free/code-generator` | UI code generator | React, Vue, Svelte, and HTML output from node JSON. |
 | `@figma-mcp-free/server` | MCP STDIO server | Tools for MCP-compatible clients. |
-| `figma-mcp-free` | CLI | `init`, `components`, `export-tokens`, `generate`, and `generate-from-json`. |
+| `figma-mcp-free` | CLI | `init`, `doctor`, `inspect-selection`, `components`, token export, and code generation. |
+
+The manifests and package contents are checked for future distribution, but these packages have not been published from this repository yet. Use the source checkout commands above; no npm release is implied by this README.
 
 ## Visual Overview
 
@@ -127,6 +142,8 @@ For selected-layer implementation, pass a `/design` or `/file` URL that includes
 - In CI, inject the token as a secret environment variable.
 - If a token leaks, revoke it in Figma settings and create a new one.
 - Prefer masked logs. `figma-mcp-free config get token` prints token status without revealing the full value.
+- `doctor` reports only whether an environment or local token is configured; it never prints the token value.
+- Treat `inspect_selection` output as project data because it can contain layer names and text content. Do not commit private output.
 
 See [SECURITY.md](SECURITY.md) for sensitive report handling.
 
