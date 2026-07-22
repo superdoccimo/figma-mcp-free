@@ -2,6 +2,7 @@
   "name": "@figma-mcp-free/workspace",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "packageManager": "pnpm@9.15.9",
   "engines": {
     "node": ">=18"
@@ -11,7 +12,14 @@
   ],
   "scripts": {
     "build": "pnpm -r run build",
-    "check": "pnpm -r run build && node tools/smoke-figma-url.js",
+    "typecheck": "pnpm -r exec tsc -p tsconfig.json --noEmit",
+    "test": "node --test",
+    "smoke:url": "node tools/smoke-figma-url.js",
+    "smoke:offline": "node tools/smoke-offline.mjs",
+    "smoke": "pnpm run smoke:url && pnpm run smoke:offline",
+    "check:secrets": "node tools/check-secrets.mjs",
+    "pack:check": "node tools/check-packages.mjs",
+    "check": "pnpm run build && pnpm run typecheck && pnpm run test && pnpm run smoke && pnpm run check:secrets",
     "cli": "pnpm --filter figma-mcp-free dev",
     "mcp": "pnpm --filter @figma-mcp-free/server dev"
   },

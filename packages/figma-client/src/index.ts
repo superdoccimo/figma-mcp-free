@@ -72,20 +72,42 @@ export function resolveFigmaReference(fileIdOrUrl: string, nodeId?: string): Fig
   };
 }
 
+export interface FigmaColor {
+  r: number;
+  g: number;
+  b: number;
+  a?: number;
+}
+
+export interface FigmaPaint {
+  type: string;
+  visible?: boolean;
+  opacity?: number;
+  color?: FigmaColor;
+  blendMode?: string;
+  imageRef?: string;
+  scaleMode?: string;
+}
+
 export interface FigmaNode {
   id: string;
   name: string;
   type: string; // e.g., DOCUMENT, PAGE, FRAME, RECTANGLE, TEXT, GROUP, COMPONENT, INSTANCE
   children?: FigmaNode[];
   // optional fields we may use for basic codegen
+  visible?: boolean;
+  opacity?: number;
   absoluteBoundingBox?: { x: number; y: number; width: number; height: number };
-  fills?: Array<{ type: string; visible?: boolean; color?: { r: number; g: number; b: number; a?: number } }>;
+  fills?: FigmaPaint[];
   characters?: string; // for TEXT nodes
   cornerRadius?: number;
   rectangleCornerRadii?: [number, number, number, number]; // TL, TR, BR, BL
-  strokes?: Array<{ type: string; visible?: boolean; color?: { r: number; g: number; b: number; a?: number } }>;
+  strokes?: FigmaPaint[];
   strokeWeight?: number;
   strokeAlign?: string;
+  constraints?: { horizontal?: string; vertical?: string };
+  componentId?: string;
+  componentProperties?: Record<string, { type?: string; value?: unknown; preferredValues?: unknown[] }>;
   // Auto layout
   layoutMode?: "NONE" | "HORIZONTAL" | "VERTICAL";
   itemSpacing?: number;
@@ -100,6 +122,18 @@ export interface FigmaNode {
   fontWeight?: number;
   fontFamily?: string;
   letterSpacing?: number;
+  style?: {
+    fontFamily?: string;
+    fontPostScriptName?: string;
+    fontWeight?: number;
+    fontSize?: number;
+    textAlignHorizontal?: string;
+    textAlignVertical?: string;
+    letterSpacing?: number;
+    lineHeightPx?: number;
+    lineHeightPercent?: number;
+    lineHeightUnit?: string;
+  };
   // Alignment/positioning
   primaryAxisAlignItems?: "MIN" | "CENTER" | "MAX" | "SPACE_BETWEEN";
   counterAxisAlignItems?: "MIN" | "CENTER" | "MAX" | "BASELINE";
@@ -108,7 +142,7 @@ export interface FigmaNode {
   effects?: Array<{
     type: "DROP_SHADOW" | "INNER_SHADOW" | string;
     visible?: boolean;
-    color?: { r: number; g: number; b: number; a?: number };
+    color?: FigmaColor;
     offset?: { x: number; y: number };
     radius?: number; // blur radius
     spread?: number;
@@ -241,11 +275,15 @@ export class FigmaClient {
     return frames;
   }
 
-  async getNode(fileId: string, nodeId: string): Promise<FigmaNode | undefined> {
+  async getNode(fileId: string, nodeId: string, depth?: number): Promise<FigmaNode | undefined> {
     const normalizedNodeId = normalizeFigmaNodeId(nodeId);
-    const url = `${this.baseUrl}/files/${encodeURIComponent(fileId)}/nodes?ids=${encodeURIComponent(normalizedNodeId)}`;
+    const params = new URLSearchParams({ ids: normalizedNodeId });
+    if (depth !== undefined) params.set("depth", String(depth));
+    const url = `${this.baseUrl}/files/${encodeURIComponent(fileId)}/nodes?${params.toString()}`;
     const json = await this.requestJson<FigmaNodesResponse>(url, "Failed to fetch node");
     const entry = json.nodes?.[normalizedNodeId] ?? json.nodes?.[nodeId];
     return entry?.document as FigmaNode | undefined;
   }
 }
+
+export * from "./selection.js";

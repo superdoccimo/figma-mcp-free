@@ -1,0 +1,5 @@
+export default function Component(){
+  return (
+    <span style={{"width":200,"height":40,"background":"#122133","fontSize":20,"lineHeight":"24px","fontWeight":600,"fontFamily":"Inter","color":"#122133","letterSpacing":"0px"}}>Hello Figmas!</span>
+  );
+}

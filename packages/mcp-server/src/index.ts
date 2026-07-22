@@ -1,10 +1,17 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
-import { FigmaClient, resolveFigmaReference } from "@figma-mcp-free/figma-client";
+import { FigmaClient, inspectSelection, resolveFigmaReference, resolveInspectSelectionLimits } from "@figma-mcp-free/figma-client";
 import { toDesignTokens, buildCssVarIndex, buildTypographyVarIndex, buildSizeSpacingVarIndex, buildShadowVarIndex, shadowKey, normalizeHex } from "@figma-mcp-free/design-tokens";
 import { generateCode, type Framework, type GenerateOptions } from "@figma-mcp-free/code-generator";
 import { getToken as getConfigToken } from "@figma-mcp-free/config";
+import {
+  exportTokensInputSchema,
+  generateCodeInputSchema,
+  getComponentsInputSchema,
+  getFileInputSchema,
+  inspectSelectionInputSchema,
+  listFramesInputSchema
+} from "./tool-schemas.js";
 
 function getToken(): string {
   const token = process.env.FIGMA_TOKEN || getConfigToken();
@@ -29,7 +36,7 @@ async function main() {
     "get_file",
     {
       description: "Get a Figma file by fileId or Figma /file or /design URL",
-      inputSchema: { fileId: z.string().optional(), figmaUrl: z.string().optional(), depth: z.number().int().positive().optional() }
+      inputSchema: getFileInputSchema
     },
     async ({ fileId, figmaUrl, depth }: { fileId?: string; figmaUrl?: string; depth?: number }) => {
       const ref = resolveInput({ fileId, figmaUrl });
@@ -40,10 +47,34 @@ async function main() {
   );
 
   server.registerTool(
+    "inspect_selection",
+    {
+      description: "Organize selected layer REST API data into a compact structure for code implementation. This is not the official get_design_context tool.",
+      inputSchema: inspectSelectionInputSchema
+    },
+    async ({ fileId, figmaUrl, nodeId, depth, maxChildren }: { fileId?: string; figmaUrl?: string; nodeId?: string; depth?: number; maxChildren?: number }) => {
+      const ref = resolveInput({ fileId, figmaUrl, nodeId });
+      if (!ref.nodeId) {
+        throw new Error("nodeId is required unless figmaUrl includes ?node-id=...");
+      }
+      const client = new FigmaClient({ token: getToken() });
+      const limits = resolveInspectSelectionLimits({ depth, maxChildren });
+      const node = await client.getNode(ref.fileId, ref.nodeId, Math.max(1, limits.depth));
+      if (!node) throw new Error(`Node not found: ${ref.nodeId}`);
+      const result = inspectSelection(node, {
+        fileId: ref.fileId,
+        nodeId: ref.nodeId,
+        ...limits
+      });
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.registerTool(
     "get_components",
     {
       description: "List components for a Figma file by fileId or Figma /file or /design URL",
-      inputSchema: { fileId: z.string().optional(), figmaUrl: z.string().optional(), q: z.string().optional(), limit: z.number().int().positive().max(1000).optional() }
+      inputSchema: getComponentsInputSchema
     },
     async ({ fileId, figmaUrl, q, limit }: { fileId?: string; figmaUrl?: string; q?: string; limit?: number }) => {
       const ref = resolveInput({ fileId, figmaUrl });
@@ -63,7 +94,7 @@ async function main() {
     "list_frames",
     {
       description: "List frame nodes in a Figma file by fileId or Figma /file or /design URL",
-      inputSchema: { fileId: z.string().optional(), figmaUrl: z.string().optional(), depth: z.number().int().positive().optional() }
+      inputSchema: listFramesInputSchema
     },
     async ({ fileId, figmaUrl, depth }: { fileId?: string; figmaUrl?: string; depth?: number }) => {
       const ref = resolveInput({ fileId, figmaUrl });
@@ -77,7 +108,7 @@ async function main() {
     "export_tokens",
     {
       description: "Export design tokens from a Figma file by fileId or Figma /file or /design URL",
-      inputSchema: { fileId: z.string().optional(), figmaUrl: z.string().optional() }
+      inputSchema: exportTokensInputSchema
     },
     async ({ fileId, figmaUrl }: { fileId?: string; figmaUrl?: string }) => {
       const ref = resolveInput({ fileId, figmaUrl });
@@ -92,14 +123,7 @@ async function main() {
     "generate_code",
     {
       description: "Generate UI code from a file/node ID pair or a Figma URL with node-id",
-      inputSchema: {
-        fileId: z.string().optional(),
-        figmaUrl: z.string().optional(),
-        nodeId: z.string().optional(),
-        framework: z.enum(["react", "vue", "svelte", "html"]),
-        tokens: z.any().optional(),
-        varPrefix: z.string().optional()
-      }
+      inputSchema: generateCodeInputSchema
     },
     async ({ fileId, figmaUrl, nodeId, framework, tokens, varPrefix }: { fileId?: string; figmaUrl?: string; nodeId?: string; framework: Framework; tokens?: unknown; varPrefix?: string }) => {
       const ref = resolveInput({ fileId, figmaUrl, nodeId });

@@ -3,7 +3,7 @@
 > **知っていましたか？** MCPは完全無料のオープン規格です。  
 > でも、Figmaの公式Dev Mode MCP Serverは**有料プラン限定**（月額$15以上）にしています。
 
-**朗報：Personal Access Tokenだけで、無料で同じことができます！**
+**Personal Access Tokenだけで、無料のread-only REST APIワークフローを利用できます。** 公式Dev Mode MCPや公式`get_design_context`と同一・同等の機能を提供するものではありません。
 
 本記事では、Figmaの無料プランユーザーでも、MCPを使ってデザインからコード生成まで実現できる方法を、**初心者でも必ず成功できるよう**超詳細に解説します。
 
@@ -18,6 +18,30 @@
 - ✅ **完全無料**での実装（有料プラン不要）
 
 📖 **English Documentation**: For quick setup and API usage examples, see the [English README](../README.md) - includes package overview and `FIGMA_TOKEN` usage examples.
+
+## このリポジトリの現行コマンド
+
+現在はソースから利用します。package manifestは将来の配布に備えて検査していますが、npm publishはまだ行っていません。
+
+```bash
+pnpm install
+pnpm -r build
+
+FIGMA_URL="https://www.figma.com/design/<FILE_ID>/...?node-id=1-2"
+pnpm --filter figma-mcp-free dev -- doctor "$FIGMA_URL"
+pnpm --filter figma-mcp-free dev -- doctor "$FIGMA_URL" --json
+pnpm --filter figma-mcp-free dev -- inspect-selection "$FIGMA_URL" --depth 2 --max-children 20
+```
+
+MCPの`inspect_selection`は、選択レイヤーのREST API情報をコード実装向けの小さな構造へ整理するtoolです。公式`get_design_context`と同じ出力ではありません。`/file`と`/design`に対応し、`/slides`はREST APIで必要なノード情報を取得できないため非対応です。
+
+このプロジェクトはread-onlyです。Figmaへの書き込み機能やブラウザ自動操作は含みません。実トークン、非公開file ID、raw API response、`inspect_selection`の非公開プロジェクト出力をcommitしないでください。`doctor`はトークン値を表示せず、設定状態だけを表示します。
+
+トークンなしのオフライン確認には、次を使えます。
+
+```bash
+pnpm --filter figma-mcp-free dev -- generate-from-json ./examples/sample-node.json --framework react --use-tokens ./examples/sample-tokens.json
+```
 
 ## 🎓 前提知識：MCPとは
 
@@ -235,36 +259,9 @@ Figma REST API（本来は読み書き可能な技術）
 
 **これらは全て読み取り専用で可能です！**
 
-## 🚀 **書き込みが必要な場合の奇策**
+## 書き込みについて
 
-1. **Figma Plugin経由**
-
-```
-// Plugin内で書き込み実行
-figma.createComponent(componentData);
-```
-
-2. **Figma Web自動化**
-
-```
-// Playwright/Puppeteerで操作
-await page.click('[data-testid="create-component"]');
-```
-
-3. **Import機能活用**
-
-```
-# SVG/Sketch/Adobe XD経由で逆流
-figma-mcp-free export → edit → reimport
-```
-
-**結論：読み取り専用でも十分革命的です！**
-
-むしろこれが証明になります：
-
-> 「Figmaが人為的に制限している書き込み権限すら不要。読み取り専用で公式Dev Mode以上の価値を提供可能」
-
-これぞ**技術的反抗**の真骨頂ですね！🔥
+このプロジェクトは意図的にread-onlyとしており、Figmaへの書き込みやブラウザ自動操作は対象外です。書き込みが必要な作業は、Figmaの公式Plugin APIやエディタ上の適切なワークフローを別途利用してください。
 
 ## 💻 Claude Codeでの設定と使用方法
 
