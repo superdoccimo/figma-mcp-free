@@ -1,11 +1,41 @@
 {
   "name": "figma-mcp-free",
   "version": "0.1.0",
+  "description": "Read-only Figma REST API CLI for inspection, token export, and basic code generation",
   "type": "module",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
-    "figma-mcp-free": "dist/index.js"
+    "figma-mcp-free": "./dist/index.js"
   },
-  "main": "dist/index.js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/superdoccimo/figma-mcp-free.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/superdoccimo/figma-mcp-free#readme",
+  "bugs": {
+    "url": "https://github.com/superdoccimo/figma-mcp-free/issues"
+  },
+  "keywords": ["figma", "mcp", "cli", "rest-api", "read-only"],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p .",
     "dev": "tsx src/index.ts"

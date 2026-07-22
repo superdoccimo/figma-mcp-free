@@ -7,11 +7,12 @@ on:
     branches: [ main, master ]
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        node-version: [18.x, 20.x]
+        node-version: [18.x, 20.x, 22.x]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,8 +29,23 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile=false
+        run: pnpm install --frozen-lockfile
 
-      - name: Run repository checks
-        run: pnpm run check
+      - name: Build
+        run: pnpm run build
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Unit and fixture tests
+        run: pnpm run test
+
+      - name: Offline smoke tests
+        run: pnpm run smoke
+
+      - name: Check secret patterns
+        run: pnpm run check:secrets
+
+      - name: Check package contents
+        run: pnpm run pack:check
 
