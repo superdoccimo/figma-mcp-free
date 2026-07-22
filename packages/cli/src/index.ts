@@ -1,20 +1,25 @@
 #!/usr/bin/env node
-import { Command } from "commander";
+import { Command, InvalidArgumentError } from "commander";
 import { getConfigPath, readConfig, writeConfig, getToken as getCfgToken } from "@figma-mcp-free/config";
-import { FigmaClient, resolveFigmaReference } from "@figma-mcp-free/figma-client";
+import { FigmaClient, inspectSelection, resolveFigmaReference, resolveInspectSelectionLimits } from "@figma-mcp-free/figma-client";
 import { toDesignTokens } from "@figma-mcp-free/design-tokens";
 import { generateCode, type Framework } from "@figma-mcp-free/code-generator";
 import { readFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { printDoctorReport, runDoctor } from "./doctor.js";
 
 const program = new Command();
 
-const maskToken = (token: string): string => (token.length <= 8 ? "****" : `${token.slice(0, 4)}...${token.slice(-4)}`);
 const resolveInputPath = (path: string): string => {
   if (isAbsolute(path)) return path;
   return resolve(process.env.INIT_CWD || process.cwd(), path);
+};
+const parseInteger = (value: string): number => {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) throw new InvalidArgumentError("Expected a non-negative integer.");
+  return parsed;
 };
 
 program
@@ -38,7 +43,7 @@ program.command("init")
       const rl = createInterface({ input, output, terminal: true });
       try {
         if (existing) {
-          console.log(`Existing token detected (${maskToken(existing)}). Press enter to keep it or paste a new token.`);
+          console.log("Existing token detected. Press enter to keep it or paste a new token.");
         }
         const prompt = existing
           ? "Figma Personal Access Token (leave blank to keep current): "
@@ -68,7 +73,7 @@ program.command("init")
     if (existing && existing === token) {
       console.log(`Token unchanged. Config remains at ${getConfigPath()}`);
     } else {
-      console.log(`Saved token (${maskToken(token)}) to ${getConfigPath()}`);
+      console.log(`Saved token to ${getConfigPath()}`);
     }
 
     if (!process.env.FIGMA_TOKEN) {
@@ -189,6 +194,49 @@ program.command("export-tokens")
     console.log(JSON.stringify(tokens, null, 2));
   });
 
+program.command("inspect-selection")
+  .description("Organize selected layer REST API data into a compact structure for code implementation")
+  .argument("<fileIdOrUrl>")
+  .argument("[nodeId]")
+  .option("--depth <n>", "child depth to include (0-5)", parseInteger)
+  .option("--max-children <n>", "maximum children per node (0-100)", parseInteger)
+  .action(async (fileIdOrUrl: string, nodeId: string | undefined, opts: { depth?: number; maxChildren?: number }) => {
+    if (opts.depth !== undefined && opts.depth > 5) throw new InvalidArgumentError("depth must be between 0 and 5.");
+    if (opts.maxChildren !== undefined && opts.maxChildren > 100) throw new InvalidArgumentError("max-children must be between 0 and 100.");
+    const token = getCfgToken();
+    if (!token) {
+      console.error("Token not set. Run: figma-mcp-free init (or export FIGMA_TOKEN).");
+      process.exit(1);
+    }
+    const ref = resolveFigmaReference(fileIdOrUrl, nodeId);
+    if (!ref.nodeId) {
+      console.error("Node ID missing. Pass <NODE_ID> or use a Figma /file or /design URL that includes ?node-id=...");
+      process.exit(1);
+    }
+    const client = new FigmaClient({ token });
+    const limits = resolveInspectSelectionLimits(opts);
+    const node = await client.getNode(ref.fileId, ref.nodeId, Math.max(1, limits.depth));
+    if (!node) throw new Error(`Node not found: ${ref.nodeId}`);
+    console.log(JSON.stringify(inspectSelection(node, {
+      fileId: ref.fileId,
+      nodeId: ref.nodeId,
+      ...limits
+    }), null, 2));
+  });
+
+program.command("doctor")
+  .description("Check local setup and optional Figma file access without displaying tokens")
+  .argument("[figmaUrl]")
+  .option("--file-id <fileId>", "Figma file ID to validate")
+  .option("--node-id <nodeId>", "Figma node ID to validate")
+  .option("--json", "output JSON")
+  .action(async (figmaUrl: string | undefined, opts: { fileId?: string; nodeId?: string; json?: boolean }) => {
+    const report = await runDoctor({ figmaUrl, fileId: opts.fileId, nodeId: opts.nodeId });
+    if (opts.json) console.log(JSON.stringify(report, null, 2));
+    else printDoctorReport(report);
+    if (report.status === "error") process.exitCode = 1;
+  });
+
 program.command("components")
   .description("List components in a file")
   .argument("<fileIdOrUrl>")
@@ -243,9 +291,8 @@ config
       // eslint-disable-next-line no-console
       console.log("Token: (not set)");
     } else {
-      const masked = t.length <= 8 ? "****" : `${t.slice(0, 4)}...${t.slice(-4)}`;
       // eslint-disable-next-line no-console
-      console.log(`Token: ${masked}`);
+      console.log("Token: (set)");
     }
     // eslint-disable-next-line no-console
     console.log(`Config path: ${getConfigPath()}`);
@@ -259,4 +306,7 @@ config
     console.log(getConfigPath());
   });
 
-program.parse();
+program.parseAsync().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : "Command failed.");
+  process.exitCode = 1;
+});
