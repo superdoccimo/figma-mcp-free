@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main, master ]
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -45,6 +48,9 @@ jobs:
 
       - name: Check secret patterns
         run: pnpm run check:secrets
+
+      - name: Check fork portability
+        run: pnpm run check:portability
 
       - name: Check package contents
         run: pnpm run pack:check
