@@ -38,66 +38,154 @@ test("accepts manual file and node IDs", () => {
 
 for (const status of [401, 403, 404, 429, 500]) {
   test(`converts HTTP ${status} into FigmaApiError`, async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = async () => new Response(JSON.stringify({ message: "sample failure" }), {
+    const fetchImpl = async () => new Response(JSON.stringify({ message: "sample failure" }), {
       status,
       headers: { "content-type": "application/json" }
     });
-    try {
-      const client = new FigmaClient({ token: "test-token", maxRetries: 0 });
-      await assert.rejects(client.getFile("FILE"), (error) => {
-        assert.ok(error instanceof FigmaApiError);
-        assert.equal(error.status, status);
-        assert.doesNotMatch(error.message, /test-token/);
-        return true;
-      });
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    const client = new FigmaClient({ token: "test-token", maxRetries: 0, fetchImpl });
+    await assert.rejects(client.getFile("FILE"), (error) => {
+      assert.ok(error instanceof FigmaApiError);
+      assert.equal(error.status, status);
+      assert.doesNotMatch(error.message, /test-token/);
+      return true;
+    });
   });
 }
 
-test("honors Retry-After before retrying a rate-limited request", async () => {
-  const originalFetch = globalThis.fetch;
+test("honors short Retry-After before retrying a rate-limited request", async () => {
   let calls = 0;
-  globalThis.fetch = async () => {
+  const fetchImpl = async () => {
     calls += 1;
-    if (calls === 1) {
-      return new Response("{}", { status: 429, headers: { "retry-after": "0" } });
-    }
+    if (calls === 1) return new Response("{}", { status: 429, headers: { "retry-after": "0" } });
     return new Response(JSON.stringify({ name: "File", document: { id: "0:0", name: "Document", type: "DOCUMENT" } }), {
       status: 200,
       headers: { "content-type": "application/json" }
     });
   };
-  try {
-    const client = new FigmaClient({ token: "test-token", maxRetries: 1, retryDelayMs: 5000 });
-    const file = await client.getFile("FILE");
-    assert.equal(file.name, "File");
-    assert.equal(calls, 2);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  const client = new FigmaClient({ token: "test-token", maxRetries: 1, retryDelayMs: 5000, fetchImpl });
+  const file = await client.getFile("FILE");
+  assert.equal(file.name, "File");
+  assert.equal(calls, 2);
+  assert.equal(client.getStats().retries, 1);
 });
 
-test("requests normalized node ID and depth", async () => {
-  const originalFetch = globalThis.fetch;
+test("surfaces long rate limits and Figma plan metadata without wasting retries", async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return new Response("{}", {
+      status: 429,
+      headers: {
+        "retry-after": "120",
+        "x-figma-plan-tier": "starter",
+        "x-figma-rate-limit-type": "low",
+        "x-figma-upgrade-link": "https://www.figma.com/pricing"
+      }
+    });
+  };
+  const client = new FigmaClient({
+    token: "test-token",
+    maxRetries: 3,
+    maxAutomaticRetryAfterMs: 30000,
+    fetchImpl
+  });
+  await assert.rejects(client.getFile("FILE"), (error) => {
+    assert.ok(error instanceof FigmaApiError);
+    assert.equal(error.retryAfterMs, 120000);
+    assert.equal(error.planTier, "starter");
+    assert.equal(error.rateLimitType, "low");
+    assert.equal(error.upgradeUrl, "https://www.figma.com/pricing");
+    return true;
+  });
+  assert.equal(calls, 1);
+});
+
+test("batch-fetches normalized node IDs in one request", async () => {
   let requestedUrl = "";
-  globalThis.fetch = async (input) => {
+  const fetchImpl = async (input) => {
+    requestedUrl = String(input);
+    return new Response(JSON.stringify({
+      nodes: {
+        "1:2": { document: { id: "1:2", name: "One", type: "FRAME" } },
+        "3:4": { document: { id: "3:4", name: "Two", type: "TEXT" } }
+      }
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const client = new FigmaClient({ token: "test-token", fetchImpl });
+  const nodes = await client.getNodes("FILE", ["1-2", "3:4", "1:2"], 2);
+  assert.deepEqual(Object.keys(nodes), ["1:2", "3:4"]);
+  assert.equal(nodes["3:4"]?.name, "Two");
+  assert.match(decodeURIComponent(requestedUrl), /ids=1:2,3:4/);
+  assert.match(requestedUrl, /depth=2/);
+  assert.equal(client.getStats().networkRequests, 1);
+});
+
+test("getNode delegates to the batch endpoint", async () => {
+  let requestedUrl = "";
+  const fetchImpl = async (input) => {
     requestedUrl = String(input);
     return new Response(JSON.stringify({
       nodes: { "1:2": { document: { id: "1:2", name: "Node", type: "FRAME" } } }
     }), { status: 200, headers: { "content-type": "application/json" } });
   };
-  try {
-    const client = new FigmaClient({ token: "test-token" });
-    const node = await client.getNode("FILE", "1-2", 2);
-    assert.equal(node?.id, "1:2");
-    assert.match(requestedUrl, /ids=1%3A2/);
-    assert.match(requestedUrl, /depth=2/);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  const client = new FigmaClient({ token: "test-token", fetchImpl });
+  const node = await client.getNode("FILE", "1-2", 2);
+  assert.equal(node?.id, "1:2");
+  assert.match(requestedUrl, /ids=1%3A2/);
+});
+
+test("caches successful responses and supports explicit refresh", async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({
+      name: `File ${calls}`,
+      document: { id: "0:0", name: "Document", type: "DOCUMENT" }
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const client = new FigmaClient({ token: "test-token", cacheTtlMs: 60000, fetchImpl });
+  assert.equal((await client.getFile("FILE")).name, "File 1");
+  assert.equal((await client.getFile("FILE")).name, "File 1");
+  assert.equal(calls, 1);
+  assert.equal((await client.getFile("FILE", undefined, { cache: "reload" })).name, "File 2");
+  assert.equal(calls, 2);
+  assert.deepEqual(client.getStats(), {
+    cacheHits: 1,
+    cacheMisses: 1,
+    networkRequests: 2,
+    retries: 0,
+    inFlightJoins: 0,
+    cacheEntries: 1
+  });
+});
+
+test("joins identical in-flight reads", async () => {
+  let calls = 0;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const fetchImpl = async () => {
+    calls += 1;
+    await gate;
+    return new Response(JSON.stringify({ name: "File", document: { id: "0:0", name: "Document", type: "DOCUMENT" } }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  };
+  const client = new FigmaClient({ token: "test-token", fetchImpl });
+  const first = client.getFile("FILE");
+  const second = client.getFile("FILE");
+  release();
+  await Promise.all([first, second]);
+  assert.equal(calls, 1);
+  assert.equal(client.getStats().inFlightJoins, 1);
+});
+
+test("aborts requests that exceed the configured timeout", async () => {
+  const fetchImpl = async (_input, init) => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+  });
+  const client = new FigmaClient({ token: "test-token", requestTimeoutMs: 5, maxRetries: 0, fetchImpl });
+  await assert.rejects(client.getFile("FILE"), /timed out/);
 });
 
 test("inspectSelection returns a stable compact schema and enforces limits", () => {

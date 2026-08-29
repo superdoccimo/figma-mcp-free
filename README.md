@@ -4,188 +4,220 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-Free, read-only MCP workflow for Figma using the REST API.
+Quota-aware, read-only Figma tooling for MCP clients, terminals, and code-generation workflows.
 
-`figma-mcp-free` lets Claude, Cursor, Windsurf, Cline, and local scripts inspect Figma files, list components, export design tokens, and generate starter UI code without depending on a paid Dev Mode MCP seat. It is a community workflow around Figma Personal Access Tokens and the public REST API.
+`figma-mcp-free` lets Claude, Cursor, Codex, Windsurf, Cline, and local scripts inspect Figma files, batch-read nodes, export design tokens, and generate starter React, Vue, Svelte, or HTML code through the public Figma REST API.
 
-This does not replace Figma Dev Mode or any official write-capable workflow. The Figma REST API is read-only, so this project cannot create, edit, move, or publish design objects back into Figma.
+It does not replace Figma Dev Mode, the official Figma MCP server, or a write-capable Figma Plugin. REST mode is intentionally read-only.
 
-## What It Does
+## Why This Project Exists
 
-- Runs as an MCP STDIO server for AI coding tools.
-- Provides a CLI for component search, code generation, and token export.
-- Reads Figma `/file` and `/design` links through a Personal Access Token.
-- Accepts full Figma URLs and normalizes `node-id=1-2` to `1:2` automatically.
-- Organizes a selected layer into compact, implementation-oriented JSON with `inspect_selection`.
-- Diagnoses local setup, URL parsing, token state, and optional API access with `doctor`.
-- Converts Figma node JSON into React, Vue, Svelte, or HTML starter code.
-- Exports colors, spacing, sizes, typography, and shadows as W3C Design Tokens.
-- Includes an offline demo path that works without a Figma token.
+Figma REST API limits depend on the endpoint, seat, plan, and resource location. Tier 1 endpoints such as `GET file` and `GET file nodes` can be especially scarce for View and Collab seats. This project therefore treats every request as a budgeted resource:
 
-## Try It Without A Token
+- multiple node IDs are batched into one `GET file nodes` request where possible;
+- identical in-flight calls are joined instead of duplicated;
+- successful responses are held in a bounded, short-lived in-memory cache;
+- `refresh` explicitly bypasses a cached value;
+- long `Retry-After` responses are surfaced rather than retried wastefully;
+- Figma plan tier, limit type, and upgrade guidance are preserved in safe diagnostics;
+- large responses can be bounded by depth or transformed into compact selection context.
 
-Use the sample node and token files to verify the generator before connecting a real Figma file.
+See Figma's official [REST API rate-limit documentation](https://developers.figma.com/docs/rest-api/rate-limits/) for current limits. Figma reserves the right to change them.
+
+## Features
+
+- MCP STDIO server with stable, read-only tools.
+- CLI for file inspection, batch node reads, component search, token export, and code generation.
+- Full `/file` and `/design` URL parsing with `node-id=1-2` normalization to `1:2`.
+- `inspect_selection` for compact, implementation-oriented selected-layer context.
+- `get_nodes` and `generate-many` for quota-efficient batch workflows.
+- Retry, timeout, rate-limit metadata, cache statistics, and explicit cache controls.
+- W3C-style design tokens for colors, sizes, spacing, typography, and shadows.
+- Offline fixtures for evaluating generators without a Figma token.
+- Protected local PAT storage with atomic replacement and owner-only POSIX permissions.
+- Automated, read-only fork-network auditing and contribution provenance.
+- CI across Node.js 18, 20, and 22, including build, typecheck, tests, smoke tests, secret checks, package checks, and fork portability checks.
+
+## Try It Without a Token
 
 ```bash
 git clone https://github.com/superdoccimo/figma-mcp-free.git
 cd figma-mcp-free
-pnpm install
+pnpm install --frozen-lockfile
 pnpm -r build
-pnpm --filter figma-mcp-free dev -- generate-from-json ./examples/sample-node.json --framework react --use-tokens ./examples/sample-tokens.json
+pnpm --filter figma-mcp-free dev -- \
+  generate-from-json ./examples/sample-node.json \
+  --framework react \
+  --use-tokens ./examples/sample-tokens.json
 ```
 
-That command does not call the Figma API. It is the fastest first-run check for contributors, reviewers, and CI-like environments.
+The offline command does not contact Figma.
 
 ## Live Figma Quickstart
 
-1. In Figma, select the target frame or component and copy a link to the selection.
-2. Use a `/design` or `/file` URL. `/slides` links are not supported by the Figma REST API.
-3. Store your token locally:
+1. Select a frame or component in Figma and copy a link to the selection.
+2. Use a `/design` or `/file` URL. `/slides` is not supported by this REST workflow.
+3. Store a PAT locally or provide `FIGMA_TOKEN` in the environment.
 
 ```bash
 pnpm --filter figma-mcp-free dev -- init
 ```
 
-4. Check the local setup and selected layer access:
+4. Diagnose the local environment and selected node.
 
 ```bash
-FIGMA_URL="https://www.figma.com/design/<FILE_ID>/...?node-id=1-2"
+FIGMA_URL="https://www.figma.com/design/<FILE_ID>/Example?node-id=1-2"
 pnpm --filter figma-mcp-free dev -- doctor "$FIGMA_URL"
-# Add --json for machine-readable diagnostics.
 ```
 
-5. Inspect or generate from the selected layer:
+5. Inspect, batch-read, or generate.
 
 ```bash
 pnpm --filter figma-mcp-free dev -- inspect-selection "$FIGMA_URL" --depth 2 --max-children 20
-pnpm --filter figma-mcp-free dev -- components "$FIGMA_URL" --query Button --limit 5
-pnpm --filter figma-mcp-free dev -- export-tokens "$FIGMA_URL" > tokens.json
-pnpm --filter figma-mcp-free dev -- generate "$FIGMA_URL" --framework react --use-tokens ./tokens.json > out.jsx
+
+pnpm --filter figma-mcp-free dev -- nodes "$FIGMA_URL" 1:2 3:4 5:6 --depth 2
+
+pnpm --filter figma-mcp-free dev -- generate "$FIGMA_URL" --framework react > Card.tsx
+
+pnpm --filter figma-mcp-free dev -- generate-many "$FIGMA_URL" 1:2 3:4 5:6 \
+  --framework react \
+  --out-dir ./generated
 ```
 
-Manual `<FILE_ID> <NODE_ID>` calls still work. When you pass a node ID manually, use the API format (`1:2`), or let the CLI normalize `1-2`.
+`generate-many` fetches the requested nodes in batches and writes a manifest beside the generated files.
 
-Quick API check:
+## CLI Commands
 
-```bash
-curl -H "X-Figma-Token: $FIGMA_TOKEN" \
-  "https://api.figma.com/v1/files/<FILE_ID>/nodes?ids=<NODE_ID>"
-```
+| Command | Purpose |
+| --- | --- |
+| `init` | Save a PAT without printing it. |
+| `doctor` | Check Node, pnpm, token state, file permissions, URL parsing, and optional API access. |
+| `file` | Fetch a Figma file with optional depth. |
+| `nodes` | Batch-fetch multiple node IDs. |
+| `frames` | List frames from a file. |
+| `inspect-selection` | Produce bounded implementation context for one node. |
+| `components` | Search component metadata. |
+| `export-tokens` | Export W3C-style token JSON. |
+| `generate` | Generate starter code for one node. |
+| `generate-many` | Batch-fetch and generate multiple nodes. |
+| `generate-from-json` | Generate offline from a local fixture. |
+| `config get token` | Show only whether a token exists. |
+| `config security` | Check local config file permissions. |
 
-If JSON is returned, the token, file ID, and node ID are aligned.
-
-## Supported Links And Limits
-
-| Item | Status | Notes |
-| --- | --- | --- |
-| `/file/<FILE_ID>` | Supported | Use with a selected `node-id` when generating code from one node. |
-| `/design/<FILE_ID>` | Supported | Same REST file/node access as `/file`. |
-| `/slides/...` | Not supported | Figma's REST API does not expose slide node information for this workflow. |
-| `node-id=1-2` | Auto-normalized | The CLI and MCP helpers normalize full URLs to API format (`1:2`). |
-| Write operations | Not supported | REST access is read-only. Use the Figma Plugin API or editor workflows for writes. |
-| Images API URLs | Temporary | Good for development checks, but they expire and should not be committed as README or production assets. |
+Network-reading commands accept `--refresh` to bypass the process-local cache.
 
 ## MCP Server
 
-Build the packages, then launch the STDIO server:
+Build and start the STDIO server:
 
 ```bash
 pnpm -r build
 node packages/mcp-server/dist/index.js
 ```
 
-The server reads `FIGMA_TOKEN` from the environment first. If the environment variable is not present, it falls back to the token stored by `figma-mcp-free init`.
+Example client configurations are in:
 
-Exposed MCP tools:
+- [`examples/codex-config/mcp.json`](examples/codex-config/mcp.json)
+- [`examples/cursor-config/mcp.json`](examples/cursor-config/mcp.json)
 
-- `get_file`
-- `inspect_selection`
-- `get_components`
-- `list_frames`
-- `generate_code`
-- `export_tokens`
+The server reads `FIGMA_TOKEN` first, then the protected config created by `figma-mcp-free init`.
 
-Example client configs live in [`examples/codex-config/mcp.json`](examples/codex-config/mcp.json) and [`examples/cursor-config/mcp.json`](examples/cursor-config/mcp.json).
+### MCP tools
 
-MCP tools accept either `fileId` or `figmaUrl`. `generate_code` and `inspect_selection` can read `nodeId` from a `figmaUrl` that includes `?node-id=...`, or from an explicit `nodeId` argument. `inspect_selection` also accepts optional `depth` and `maxChildren` limits. For large files, `get_file` and `list_frames` accept an optional `depth` value to reduce payload size.
+| Tool | Purpose |
+| --- | --- |
+| `get_file` | Raw file read with optional depth and refresh. |
+| `get_nodes` | Quota-efficient batch node read. |
+| `inspect_selection` | Compact selected-layer context. |
+| `get_components` | Component metadata search. |
+| `list_frames` | Frame discovery. |
+| `export_tokens` | Token extraction. |
+| `generate_code` | Starter UI code generation. |
+| `get_cache_stats` | Cache, request, retry, and deduplication counters. |
+| `clear_cache` | Remove process-local cached responses. |
 
-### Tool Vocabulary For Selected Layers
+Existing tool names and inputs remain valid. New controls are optional.
 
-`get_components` is not equivalent to the Figma remote MCP `get_design_context` tool. In this project, `get_components` lists component metadata from the Figma REST components endpoint, such as component keys, node IDs, and names. It does not collect selected-layer context for code generation.
+Environment tuning:
 
-`inspect_selection` organizes the selected layer's REST API information into a small, stable structure for code implementation. It includes layout, paint, text, component, effect, image-reference presence, and bounded child summaries. It is not the official `get_design_context` tool and does not claim equivalent output.
+| Variable | Default | Meaning |
+| --- | ---: | --- |
+| `FIGMA_MCP_CACHE_TTL_MS` | `300000` | In-memory response lifetime. Use `0` to disable. |
+| `FIGMA_MCP_MAX_CACHE_ENTRIES` | `128` | Maximum cached request URLs. |
+| `FIGMA_MCP_REQUEST_TIMEOUT_MS` | `20000` | Timeout per network attempt. |
+| `FIGMA_MCP_MAX_RETRIES` | `2` | Retry count for transient failures. |
+| `FIGMA_MCP_NODE_BATCH_SIZE` | `100` | Maximum node IDs per batch request. |
 
-For direct starter code, pass a `/design` or `/file` URL that includes `node-id=...` to `generate_code`. Use `get_file` with a narrow `depth`, or `list_frames`, only when you need raw structure.
+## Selected-Layer Vocabulary
 
-## Packages
+`get_components` returns component metadata. It is not selected-layer implementation context.
 
-| Package | Purpose | Highlights |
-| --- | --- | --- |
-| `@figma-mcp-free/figma-client` | Figma REST wrapper | Auth headers, file/node/component helpers. |
-| `@figma-mcp-free/design-tokens` | Token exporter | W3C Design Tokens for color, size, spacing, typography, and shadow values. |
-| `@figma-mcp-free/code-generator` | UI code generator | React, Vue, Svelte, and HTML output from node JSON. |
-| `@figma-mcp-free/server` | MCP STDIO server | Tools for MCP-compatible clients. |
-| `figma-mcp-free` | CLI | `init`, `doctor`, `inspect-selection`, `components`, token export, and code generation. |
+`inspect_selection` transforms one REST node into a bounded schema containing layout, paint summaries, text, component information, effects, dimensions, and child summaries. Image bytes, private image references, vector path data, and unbounded child trees are omitted.
 
-The manifests and package contents are checked for future distribution, but these packages have not been published from this repository yet. Use the source checkout commands above; no npm release is implied by this README.
+This tool is not Figma's official `get_design_context` and does not claim equivalent output.
 
-## Visual Overview
+## Forks Are First-Class
 
-![Comparison of Figma Dev Mode, paid enclosure, and read-only community workflows](docs/assets/figma_comparison_chart_en.svg)
+The repository includes a read-only fork intelligence workflow. It detects its canonical upstream from GitHub metadata, compares forks, and highlights unique downstream commits without pushing, merging, opening issues, or modifying forks.
 
-![Architecture diagram showing MCP clients, figma-mcp-free, and the Figma REST API](docs/assets/figma_architecture_diagram_en.svg)
+```bash
+GITHUB_TOKEN=... node tools/audit-forks.mjs --repo owner/repository
+```
+
+See [Forks, downstreams, and contribution flow](docs/forks.md). Operational code is checked for owner-specific paths so a renamed fork can build and run normally.
+
+One concrete improvement already recovered from the fork network is owner-only PAT file permissions. The upstream adaptation preserves contributor provenance in [CHANGELOG.md](CHANGELOG.md).
 
 ## Security
 
-- Keep `FIGMA_TOKEN` in your environment, `.env`, or the local config created by `figma-mcp-free init`.
-- Do not commit real tokens, private Figma file IDs, or raw API responses containing sensitive project names.
-- In CI, inject the token as a secret environment variable.
-- If a token leaks, revoke it in Figma settings and create a new one.
-- Prefer masked logs. `figma-mcp-free config get token` prints token status without revealing the full value.
-- `doctor` reports only whether an environment or local token is configured; it never prints the token value.
-- Treat `inspect_selection` output as project data because it can contain layer names and text content. Do not commit private output.
+- Prefer `FIGMA_TOKEN` for ephemeral sessions and CI secrets.
+- Local config writes are atomic.
+- On POSIX systems, the config directory is restricted to `0700` and the token file to `0600` where supported.
+- Token values are never printed by `init`, `doctor`, or `config get token`.
+- Never commit PATs, private file IDs, raw private API responses, or private `inspect_selection` output.
+- The default cache is memory-only and disappears when the process exits.
+- If a PAT leaks, revoke it in Figma and issue a replacement.
 
-See [SECURITY.md](SECURITY.md) for sensitive report handling.
+Sensitive reports should follow [SECURITY.md](SECURITY.md).
 
-## Assets And Images
+## Current Boundaries
 
-Figma view URLs are not direct image assets. For generated websites and public docs:
+- REST mode cannot create, edit, move, delete, or publish Figma objects.
+- Figma Plugin and REST APIs have different capabilities and limits.
+- Code generation is a starter implementation, not a pixel-perfect compiler guarantee.
+- `/slides` links are not supported by the current REST pipeline.
+- Images API URLs are temporary and should not be committed as durable application assets.
+- Packages are prepared and checked for distribution but are not published from this repository yet. Use the source checkout workflow above.
 
-- Use files exported from Figma into your app or repository assets.
-- Use your own CDN or server for stable production image URLs.
-- Treat `images.figma.com` and Images API results as temporary development URLs.
-- Keep README diagrams in [`docs/assets/`](docs/assets/) and link them with relative paths.
+A separately permissioned, read-only local Plugin bridge is tracked in [ROADMAP.md](ROADMAP.md). It will not silently turn REST tools into write-capable tools.
 
-More details are in [docs/troubleshooting.md](docs/troubleshooting.md).
+## Project Structure
 
-## Rate Limits
+| Package | Purpose |
+| --- | --- |
+| `@figma-mcp-free/figma-client` | URL handling, REST batching, cache, retries, diagnostics. |
+| `@figma-mcp-free/design-tokens` | W3C-style token extraction and lookup indexes. |
+| `@figma-mcp-free/code-generator` | React, Vue, Svelte, and HTML starter generation. |
+| `@figma-mcp-free/config` | Protected local configuration. |
+| `@figma-mcp-free/server` | MCP STDIO server. |
+| `figma-mcp-free` | CLI. |
 
-Figma Personal Access Tokens can still hit API rate limits. `figma-mcp-free` retries `429` and temporary `5xx` responses with exponential backoff and respects the `Retry-After` header when Figma sends one. If you still see `429`, wait before retrying and prefer narrower calls such as `get_file` / `list_frames` with `depth`.
+Further reading:
 
-## Documentation
-
-- [Quickstart](docs/quickstart.md) - install, offline demo, live Figma usage, and MCP setup.
-- [Troubleshooting](docs/troubleshooting.md) - token scopes, `/slides`, node IDs, temporary images, and MCP client issues.
-- [Why this exists](docs/why-this-exists.md) - project positioning and open workflow context.
-- [Demo runbook](docs/demo/runbook.md) - repeatable demo commands.
-- [Japanese README](jp/README.md) - detailed Japanese setup and usage guide.
-- [Requirements notes](figma_mcp_requirements.md) - longer planning and roadmap context.
-
-## Resources
-
-- English setup guide: [betelgeuse.work/figma-mcp](https://betelgeuse.work/figma-mcp/)
-- Spanish setup guide: [ehrigite.com/figma-mcp](https://ehrigite.com/figma-mcp/)
-- Japanese setup guide: [minokamo.tokyo](https://minokamo.tokyo/2025/09/18/9360/)
-- English video: [figma-mcp-free Setup Tutorial](https://youtu.be/5c2QNSXRwyk)
-- Japanese video: [figma-mcp-free setup tutorial](https://youtu.be/f2YqnKAy80Y)
+- [Architecture](docs/architecture.md)
+- [Quickstart](docs/quickstart.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Fork support](docs/forks.md)
+- [Roadmap](ROADMAP.md)
+- [Japanese guide](jp/README.md)
+- [Changelog](CHANGELOG.md)
 
 ## Contributing
 
-Issues and PRs are welcome. Please keep changes focused, avoid committing secrets, and run:
-
 ```bash
-pnpm install
-pnpm -r build
+pnpm install --frozen-lockfile
+pnpm run check
+pnpm run pack:check
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and the GitHub issue templates before opening larger changes.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Fork-originated fixes should include source commit and author provenance so useful downstream work does not disappear into the branches.

@@ -1,23 +1,39 @@
 # Contributing
 
-Thanks for your interest in contributing!
+Thank you for improving `figma-mcp-free`.
 
-- Development
-  - Prereqs: Node 18+, pnpm
-  - Install deps: `pnpm install`
-  - Build: `pnpm -r build`
-  - Dev: run package-specific `dev` scripts where available
+## Development
 
-- Code style
-  - TypeScript strict mode
-  - Keep changes minimal and focused
-  - Avoid committing secrets; use `.env` locally
+```bash
+pnpm install --frozen-lockfile
+pnpm run check
+pnpm run pack:check
+```
 
-- Pull Requests
-  - Open an issue first if the change is significant
-  - Add tests or docs when it helps reviewers
-  - Ensure CI is green
+The CI matrix covers supported Node.js versions. Keep TypeScript strict, avoid hidden network calls in tests, and add fixtures for generated output changes.
 
-- Security
-  - Please do not open public issues for sensitive reports. Use the contact in `SECURITY.md` (if present) or GitHub security advisories.
+## Compatibility
 
+- Preserve existing CLI commands and MCP tool names unless a major-version migration is approved.
+- New inputs should normally be optional.
+- Prefer bounded, compact responses for AI clients.
+- Batch Figma node reads instead of adding loops that issue one REST request per node.
+- REST mode must remain read-only.
+
+## Fork-originated changes
+
+Forks are supported and monitored as a source of real-world improvements. When a change began in a fork, include the fork URL, commit SHA, original author, and license/provenance notes in the pull request. Preserve contributor credit when adapting the implementation.
+
+See [docs/forks.md](docs/forks.md) for synchronization and audit instructions.
+
+## Pull requests
+
+- Explain the user-visible problem and the selected design.
+- Include tests and documentation.
+- State API-call impact, especially for Tier 1 Figma endpoints.
+- Run `pnpm run check` and `pnpm run pack:check`.
+- Do not include PATs, private file IDs, raw private responses, or generated private design context.
+
+## Security
+
+Do not open a public issue for a sensitive vulnerability. Follow [SECURITY.md](SECURITY.md). Local config changes must preserve atomic writes and owner-only permissions where the platform supports them.

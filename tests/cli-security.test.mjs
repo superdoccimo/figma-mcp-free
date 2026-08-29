@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -26,6 +26,7 @@ test("doctor reports token state without exposing the token", () => {
     const report = JSON.parse(result.stdout);
     assert.equal(report.readOnly, true);
     assert.equal(report.checks.find((check) => check.id === "env_token").status, "pass");
+    assert.equal(report.checks.find((check) => check.id === "quota_strategy").status, "pass");
   } finally {
     rmSync(configHome, { recursive: true, force: true });
   }
@@ -53,6 +54,25 @@ test("init and config status never print token fragments", () => {
     const logs = `${init.stdout}${init.stderr}${status.stdout}${status.stderr}`;
     assert.doesNotMatch(logs, /sensitive|6789/);
     assert.match(status.stdout, /Token: \(set\)/);
+  } finally {
+    rmSync(configHome, { recursive: true, force: true });
+  }
+});
+
+test("stored PAT uses owner-only POSIX permissions and atomic JSON output", { skip: process.platform === "win32" }, () => {
+  const { env, configHome } = isolatedEnv();
+  try {
+    const secret = "owner-only-token";
+    const init = spawnSync(process.execPath, [cli, "init", "--token", secret], { encoding: "utf8", env });
+    assert.equal(init.status, 0, init.stderr);
+    const dir = join(configHome, "figma-mcp-free");
+    const path = join(dir, "config.json");
+    assert.equal(statSync(dir).mode & 0o777, 0o700);
+    assert.equal(statSync(path).mode & 0o777, 0o600);
+    assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), { token: secret });
+    const security = spawnSync(process.execPath, [cli, "config", "security", "--json"], { encoding: "utf8", env });
+    assert.equal(security.status, 0, security.stderr);
+    assert.equal(JSON.parse(security.stdout).secure, true);
   } finally {
     rmSync(configHome, { recursive: true, force: true });
   }

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readConfig } from "@figma-mcp-free/config";
+import { getConfigSecurityStatus, readConfig } from "@figma-mcp-free/config";
 import {
   FigmaApiError,
   FigmaClient,
@@ -36,9 +36,18 @@ export function doctorMessageForStatus(status: number): string {
   if (status === 401) return "Token was rejected (401). Create or copy a valid Figma Personal Access Token.";
   if (status === 403) return "Access denied (403). Confirm that the token can access this file.";
   if (status === 404) return "File or node was not found (404). Check the file ID, node ID, and file access.";
-  if (status === 429) return "Figma rate limit reached (429). Wait for Retry-After before trying again.";
+  if (status === 429) return "Figma rate limit reached (429). Follow Retry-After and reduce calls by batching or caching.";
   if (status >= 500 && status <= 599) return `Figma API is temporarily unavailable (${status}). Retry later.`;
   return `Figma API request failed (${status}). Check the IDs, token, and network connection.`;
+}
+
+function doctorMessageForError(error: FigmaApiError): string {
+  const parts = [doctorMessageForStatus(error.status)];
+  if (error.retryAfterMs !== undefined) parts.push(`Retry after about ${Math.ceil(error.retryAfterMs / 1000)} second(s).`);
+  if (error.planTier) parts.push(`Resource plan: ${error.planTier}.`);
+  if (error.rateLimitType) parts.push(`Rate-limit class: ${error.rateLimitType}.`);
+  if (error.upgradeUrl) parts.push(`Figma supplied plan/seat guidance: ${error.upgradeUrl}`);
+  return parts.join(" ");
 }
 
 function resolveReference(options: DoctorOptions, checks: DoctorCheck[]): FigmaReference | undefined {
@@ -51,11 +60,9 @@ function resolveReference(options: DoctorOptions, checks: DoctorCheck[]): FigmaR
       }
       checks.push({ id: "figma_url", status: "pass", message: `Recognized a Figma /${ref.urlType} URL.` });
       const nodeId = options.nodeId ? normalizeFigmaNodeId(options.nodeId) : ref.nodeId;
-      if (nodeId) {
-        checks.push({ id: "node_id", status: "pass", message: `Normalized node ID to ${nodeId}.` });
-      } else {
-        checks.push({ id: "node_id", status: "skip", message: "No node ID was supplied; the file will be checked." });
-      }
+      checks.push(nodeId
+        ? { id: "node_id", status: "pass", message: `Normalized node ID to ${nodeId}.` }
+        : { id: "node_id", status: "skip", message: "No node ID was supplied; the file will be checked." });
       return { ...ref, nodeId };
     } catch (error) {
       checks.push({
@@ -95,43 +102,44 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
   const pnpmVersion = pnpm.status === 0 ? pnpm.stdout.trim() : "";
   checks.push(pnpmVersion
     ? { id: "package_manager", status: "pass", message: `pnpm ${pnpmVersion} is available.` }
-    : { id: "package_manager", status: "warn", message: "pnpm was not found; direct package execution can still work after installation." });
+    : { id: "package_manager", status: "warn", message: "pnpm was not found; source-checkout development commands require it." });
 
   const envTokenValue = process.env.FIGMA_TOKEN?.trim() ?? "";
   const configuredToken = readConfig().token;
   const localTokenValue = typeof configuredToken === "string" ? configuredToken.trim() : "";
-  const envToken = Boolean(envTokenValue);
-  const localToken = Boolean(localTokenValue);
   checks.push({
     id: "env_token",
-    status: envToken ? "pass" : "skip",
-    message: envToken ? "FIGMA_TOKEN is set." : "FIGMA_TOKEN is not set."
+    status: envTokenValue ? "pass" : "skip",
+    message: envTokenValue ? "FIGMA_TOKEN is set." : "FIGMA_TOKEN is not set."
   });
   checks.push({
     id: "local_token",
-    status: localToken ? "pass" : "skip",
-    message: localToken ? "A token is stored in local config." : "No token is stored in local config."
+    status: localTokenValue ? "pass" : "skip",
+    message: localTokenValue ? "A token is stored in local config." : "No token is stored in local config."
+  });
+
+  const security = getConfigSecurityStatus();
+  checks.push({
+    id: "config_security",
+    status: !security.exists ? "skip" : security.secure === false ? "fail" : security.secure === true ? "pass" : "warn",
+    message: security.message
   });
 
   const reference = resolveReference(options, checks);
   const token = envTokenValue || localTokenValue;
   if (!token) {
-    checks.push({
-      id: "token",
-      status: "warn",
-      message: "No token is configured. Set FIGMA_TOKEN or run figma-mcp-free init."
-    });
+    checks.push({ id: "token", status: "warn", message: "No token is configured. Set FIGMA_TOKEN or run figma-mcp-free init." });
   }
 
   if (reference && token) {
     try {
-      const client = new FigmaClient({ token });
+      const client = new FigmaClient({ token, maxRetries: 0, cacheTtlMs: 0, requestTimeoutMs: 10000 });
       if (reference.nodeId) {
-        const node = await client.getNode(reference.fileId, reference.nodeId, 1);
+        const node = await client.getNode(reference.fileId, reference.nodeId, 1, { cache: "no-store" });
         if (!node) throw new FigmaApiError("Node was not returned by Figma", 404);
         checks.push({ id: "figma_api", status: "pass", message: "The file and node are accessible through the Figma REST API." });
       } else {
-        await client.getFile(reference.fileId, 1);
+        await client.getFile(reference.fileId, 1, { cache: "no-store" });
         checks.push({ id: "figma_api", status: "pass", message: "The file is accessible through the Figma REST API." });
       }
     } catch (error) {
@@ -139,8 +147,10 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
         id: "figma_api",
         status: "fail",
         message: error instanceof FigmaApiError
-          ? doctorMessageForStatus(error.status)
-          : "Unable to reach the Figma REST API. Check the network connection and try again."
+          ? doctorMessageForError(error)
+          : error instanceof Error
+            ? error.message
+            : "Unable to reach the Figma REST API."
       });
     }
   } else {
@@ -152,9 +162,14 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
   }
 
   checks.push({
+    id: "quota_strategy",
+    status: "pass",
+    message: "Batch node reads, bounded responses, in-flight deduplication, and short-lived in-memory caching are available."
+  });
+  checks.push({
     id: "read_only",
     status: "pass",
-    message: "This CLI uses read-only Figma REST API requests and cannot modify Figma files."
+    message: "REST mode uses read-only requests and cannot modify Figma files."
   });
 
   const status = checks.some((check) => check.status === "fail")
@@ -166,8 +181,6 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
 }
 
 export function printDoctorReport(report: DoctorReport): void {
-  for (const check of report.checks) {
-    console.log(`${check.status.toUpperCase().padEnd(4)} ${check.message}`);
-  }
+  for (const check of report.checks) console.log(`${check.status.toUpperCase().padEnd(4)} ${check.message}`);
   console.log(`Result: ${report.status}`);
 }

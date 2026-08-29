@@ -18,8 +18,10 @@
     "smoke:offline": "node tools/smoke-offline.mjs",
     "smoke": "pnpm run smoke:url && pnpm run smoke:offline",
     "check:secrets": "node tools/check-secrets.mjs",
+    "check:portability": "node tools/check-portability.mjs",
     "pack:check": "node tools/check-packages.mjs",
-    "check": "pnpm run build && pnpm run typecheck && pnpm run test && pnpm run smoke && pnpm run check:secrets",
+    "fork:audit": "node tools/audit-forks.mjs",
+    "check": "pnpm run build && pnpm run typecheck && pnpm run test && pnpm run smoke && pnpm run check:secrets && pnpm run check:portability",
     "cli": "pnpm --filter figma-mcp-free dev",
     "mcp": "pnpm --filter @figma-mcp-free/server dev"
   },

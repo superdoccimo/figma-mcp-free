@@ -1,0 +1,42 @@
+name: Fork intelligence
+
+on:
+  workflow_dispatch:
+    inputs:
+      fail_on_ahead:
+        description: Fail when a comparable fork has unique commits
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: '17 3 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Audit the fork network
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          node tools/audit-forks.mjs
+          --repo "${{ github.repository }}"
+          --json fork-audit.json
+          --markdown fork-audit.md
+          ${{ inputs.fail_on_ahead && '--fail-on-ahead' || '' }}
+
+      - name: Publish workflow summary
+        if: always()
+        run: cat fork-audit.md >> "$GITHUB_STEP_SUMMARY"
