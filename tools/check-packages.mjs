@@ -28,7 +28,14 @@ try {
     for (const field of ["files", "exports", "types", "engines", "license", "repository", "homepage", "bugs", "keywords", "publishConfig"]) {
       assert.ok(manifest[field], `${manifest.name} is missing ${field}`);
     }
-    if (dir === "cli") assert.equal(manifest.bin?.["figma-mcp-free"], "./dist/index.js");
+    if (dir === "cli") {
+      assert.equal(manifest.bin?.["figma-mcp-free"], "./dist/index.js");
+      assert.equal(manifest.bin?.["figma-mcp-free-bridge"], "./dist/bridge-cli.js");
+    }
+    if (dir === "figma-client") {
+      assert.equal(manifest.exports?.["./plugin-bridge"]?.import, "./dist/plugin-bridge.js");
+      assert.equal(manifest.exports?.["./plugin-bridge"]?.types, "./dist/plugin-bridge.d.ts");
+    }
 
     const before = new Set(readdirSync(temp));
     const packed = runPnpm(["pack", "--pack-destination", temp], packageRoot);
@@ -40,7 +47,15 @@ try {
     for (const required of ["package/package.json", "package/README.md", "package/LICENSE", "package/dist/index.js", "package/dist/index.d.ts"]) {
       assert.ok(entries.includes(required), `${manifest.name} archive is missing ${required}`);
     }
-    if (dir === "cli") assert.ok(entries.includes("package/dist/doctor.js"));
+    if (dir === "cli") {
+      assert.ok(entries.includes("package/dist/doctor.js"));
+      assert.ok(entries.includes("package/dist/bridge-cli.js"));
+      assert.ok(entries.includes("package/dist/bridge-cli.d.ts"));
+    }
+    if (dir === "figma-client") {
+      assert.ok(entries.includes("package/dist/plugin-bridge.js"));
+      assert.ok(entries.includes("package/dist/plugin-bridge.d.ts"));
+    }
     if (dir === "mcp-server") assert.ok(entries.includes("package/dist/tool-schemas.js"));
 
     const packedManifest = JSON.parse(runTar(["-xOf", archive, "package/package.json"]));
