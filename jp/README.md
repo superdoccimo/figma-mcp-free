@@ -1,893 +1,417 @@
-## 📢 はじめに：なぜこの記事が必要なのか
+# figma-mcp-free 日本語ガイド
 
-> **知っていましたか？** MCPは完全無料のオープン規格です。  
-> でも、Figmaの公式Dev Mode MCP Serverは**有料プラン限定**（月額$15以上）にしています。
+Figma REST APIを使う、無料・read-only・quota-awareなMCPサーバー／CLIです。
 
-**Personal Access Tokenだけで、無料のread-only REST APIワークフローを利用できます。** 公式Dev Mode MCPや公式`get_design_context`と同一・同等の機能を提供するものではありません。
+Claude、Cursor、Codex、Windsurf、ClineなどからFigmaのファイルや選択ノードを読み取り、次の処理ができます。
 
-本記事では、Figmaの無料プランユーザーでも、MCPを使ってデザインからコード生成まで実現できる方法を、**初心者でも必ず成功できるよう**超詳細に解説します。
+- 選択レイヤーを実装向けの小さなJSONへ整理
+- 複数node IDを一括取得
+- React / Vue / Svelte / HTMLのスターターコード生成
+- W3C形式を意識したDesign Token出力
+- Figma URLと`node-id`の自動正規化
+- API制限を意識したcache、重複排除、timeout、Retry-After処理
+- fork差分の自動監査と本家への還流支援
 
-### この記事で実現できること
+このプロジェクトはFigma公式MCP、Figma Dev Mode、Figma Pluginの代替を名乗るものではありません。REST modeは意図的にread-onlyであり、Figma上の要素を作成・移動・削除・公開できません。
 
-- ✅ Figmaデザインから自動でReact/Vue/HTMLコードを生成
+英語版は[ルートREADME](../README.md)です。
 
-- ✅ Claude CodeやCodex CLIでのAI支援開発
+## 重要な前提
 
-- ✅ デザイントークンの自動抽出
+FigmaのREST API制限は、endpoint、seat、plan、対象ファイルが置かれたplanによって変わります。特に`GET file`と`GET file nodes`は利用枠が小さい場合があります。最新値は必ずFigma公式の[REST API Rate Limits](https://developers.figma.com/docs/rest-api/rate-limits/)で確認してください。
 
-- ✅ **完全無料**での実装（有料プラン不要）
+そのため、このリポジトリは「何回でもAPIを呼ぶ」のではなく、次を設計原則にしています。
 
-📖 **English Documentation**: For quick setup and API usage examples, see the [English README](../README.md) - includes package overview and `FIGMA_TOKEN` usage examples.
+1. 複数node IDは`get_nodes`でまとめる
+2. 同じrequestが同時に来たら1回へ束ねる
+3. MCP server内では短時間cacheする
+4. 大きなfile全体より、必要なnodeを狭く読む
+5. `Retry-After`が長いときは無駄な自動再試行をしない
+6. `doctor`でplan tierやrate-limit classを安全に診断する
 
-## このリポジトリの現行コマンド
+## 現在の状態
 
-現在はソースから利用します。package manifestは将来の配布に備えて検査していますが、npm publishはまだ行っていません。
+- REST MCP server: 利用可能
+- CLI: 利用可能
+- offline generator demo: 利用可能
+- npm公開: まだ行っていません
+- Figma Plugin bridge: [ROADMAP](../ROADMAP.md)で別backendとして準備中
+- write tool: 未提供
+
+現在はsource checkoutで使います。
+
+## 1. 必要な環境
+
+- Node.js 18以上
+- pnpm 9系
+- Figma Personal Access Token
+- MCP対応client、またはterminal
+
+確認:
 
 ```bash
-pnpm install
+node --version
+pnpm --version
+```
+
+## 2. インストール
+
+```bash
+git clone https://github.com/superdoccimo/figma-mcp-free.git
+cd figma-mcp-free
+pnpm install --frozen-lockfile
 pnpm -r build
+```
 
-FIGMA_URL="https://www.figma.com/design/<FILE_ID>/...?node-id=1-2"
+## 3. tokenなしで試す
+
+```bash
+pnpm --filter figma-mcp-free dev -- \
+  generate-from-json ./examples/sample-node.json \
+  --framework react \
+  --use-tokens ./examples/sample-tokens.json
+```
+
+これはFigmaへ接続しません。clone、依存関係、build、generatorを安全に確認する最短ルートです。
+
+## 4. Personal Access Tokenの扱い
+
+Figmaの設定画面で、対象ファイルを読むために必要な最小限のscopeを持つPATを作成してください。FigmaのUIやscope名は変更されることがあるため、作成画面の説明を優先してください。
+
+一時利用では環境変数を推奨します。
+
+```bash
+export FIGMA_TOKEN="figd_..."
+```
+
+Windows PowerShell:
+
+```powershell
+$env:FIGMA_TOKEN = "figd_..."
+```
+
+local configへ保存する場合:
+
+```bash
+pnpm --filter figma-mcp-free dev -- init
+```
+
+安全上の仕様:
+
+- token値は出力しません
+- POSIXではconfig directoryを`0700`、fileを`0600`へ制限します
+- temp fileへ書いてからatomicに置き換えます
+- `doctor`と`config security`で権限を確認できます
+
+```bash
+pnpm --filter figma-mcp-free dev -- config security
+```
+
+`--token`をcommand lineへ直接書くとshell historyへ残る可能性があります。interactive入力か環境変数を使う方が安全です。
+
+## 5. Figma URL
+
+対応:
+
+```text
+https://www.figma.com/file/<FILE_ID>/...?node-id=1-2
+https://www.figma.com/design/<FILE_ID>/...?node-id=1-2
+```
+
+`node-id=1-2`はAPI形式`1:2`へ自動変換します。
+
+非対応:
+
+```text
+https://www.figma.com/slides/...
+```
+
+対象frameやcomponentを選択し、Figmaの「Copy link」でnode ID付きURLを取得してください。
+
+## 6. doctor
+
+```bash
+FIGMA_URL="https://www.figma.com/design/<FILE_ID>/Example?node-id=1-2"
 pnpm --filter figma-mcp-free dev -- doctor "$FIGMA_URL"
+```
+
+machine-readable output:
+
+```bash
 pnpm --filter figma-mcp-free dev -- doctor "$FIGMA_URL" --json
-pnpm --filter figma-mcp-free dev -- inspect-selection "$FIGMA_URL" --depth 2 --max-children 20
 ```
 
-MCPの`inspect_selection`は、選択レイヤーのREST API情報をコード実装向けの小さな構造へ整理するtoolです。公式`get_design_context`と同じ出力ではありません。`/file`と`/design`に対応し、`/slides`はREST APIで必要なノード情報を取得できないため非対応です。
+確認項目:
 
-このプロジェクトはread-onlyです。Figmaへの書き込み機能やブラウザ自動操作は含みません。実トークン、非公開file ID、raw API response、`inspect_selection`の非公開プロジェクト出力をcommitしないでください。`doctor`はトークン値を表示せず、設定状態だけを表示します。
+- Node.js version
+- pnpm
+- 環境変数tokenの有無
+- local tokenの有無
+- local config fileのpermission
+- URLとnode ID
+- optionalなAPI access
+- rate-limit metadata
+- read-only boundary
 
-トークンなしのオフライン確認には、次を使えます。
+## 7. 選択レイヤーを小さく読む
 
 ```bash
-pnpm --filter figma-mcp-free dev -- generate-from-json ./examples/sample-node.json --framework react --use-tokens ./examples/sample-tokens.json
+pnpm --filter figma-mcp-free dev -- \
+  inspect-selection "$FIGMA_URL" \
+  --depth 2 \
+  --max-children 20
 ```
 
-## 🎓 前提知識：MCPとは
+`inspect-selection` / `inspect_selection`は、REST nodeを次のような実装情報へ整理します。
 
-### Model Context Protocol (MCP) について
+- sizeとposition
+- Auto Layout
+- paddingとspacing
+- fills / strokes / shadows
+- text style
+- component properties
+- 子nodeのbounded summary
 
-MCPは、2024年11月にAnthropicがオープンソース化した**完全無料の標準規格**です。AIアシスタントと外部ツール・データソースを接続するための「USB-Cポート」のようなものです。
+省略するもの:
 
-#### なぜFigmaは有料化したのか？
+- image bytes
+- private image reference値
+- vector path全量
+- 無制限のchild tree
 
-- **MCP自体**：オープンソースで完全無料
+これはFigma公式`get_design_context`と同じtoolでも同じschemaでもありません。
 
-- **Figma公式サーバー**：Dev Mode（有料プラン）限定で提供
+## 8. 複数nodeを一括取得
 
-- **解決策**：コミュニティが開発した無料代替サーバーを使用
+個別に3回APIを呼ぶ代わりに、可能な範囲で1回へまとめます。
 
-## 🛠 必要なツールの準備
-
-### 必須環境（すべて無料）
-
-#### 1\. Node.js（18以上）
-
-```
-# インストール確認
-node --version
-
-# v18以上が表示されればOK
-# インストールされていない場合：https://nodejs.org/ からダウンロード
-```
-
-#### 2\. npm または pnpm
-
-```
-# npmの確認（Node.jsに付属）
-npm --version
-
-# または pnpm（高速な代替）
-npm install -g pnpm
+```bash
+pnpm --filter figma-mcp-free dev -- \
+  nodes "$FIGMA_URL" 1:2 3:4 5:6 \
+  --depth 2
 ```
 
-#### 3\. テキストエディタ（いずれか1つ）
+MCPでは`get_nodes`を使います。
 
-- **VS Code**：https://code.visualstudio.com/
+入力例:
 
-- **Cursor**：https://cursor.com/
-
-- **Windsurf**：https://codeium.com/windsurf
-
-#### 4\. Claude CodeまたはCodex CLI（後で詳しく説明）
-
-## 👤 Figmaアカウントの作成とセットアップ
-
-### ステップ1：Figmaアカウント作成
-
-1. **Figmaウェブサイトにアクセス**  
-    [https://www.figma.com/](https://www.figma.com/)
-
-2. **「Sign up」をクリック**
-    - メールアドレスまたはGoogleアカウントで登録(勝手に○○としてログインと表示されることも)  
-        その場合は自動でログインして無料プランになっています。一度使ったことがあると下記の作業が不要の可能性があります。
-    
-    - **重要**：無料プラン（Starter）を選択
-
-3. **メール認証**
-    - 登録メールアドレスに届いた確認リンクをクリック
-
-4. **プロフィール設定**
-    - 名前を入力
-    
-    - 用途を選択（Personal projectでOK）
-
-
-
-### ステップ2：Figmaデスクトップアプリのインストール（推奨）
-
-1. **ダウンロードページにアクセス**  
-    `https://www.figma.com/downloads/`
-
-2. **OSに応じたバージョンをダウンロード**
-    - Windows：.exe ファイル
-    
-    - macOS：.dmg ファイル
-    
-    - Linux：.AppImage ファイル
-
-3. **インストール後、ログイン**
-    - 作成したアカウントでログイン
-
-左上のプロフィールアイコンをクリックしてもダウンロードできるようです。
-
-## 🔑 Personal Access Tokenの取得
-
-### 重要：これが無料でMCPを使う鍵です！
-
-#### ステップ1：設定画面へアクセス
-
-1. **Figmaを開く**（ブラウザまたはデスクトップアプリ）
-
-2. **左上のプロフィールアイコンをクリック**
-
-3. **「設定」を選択**
-
-初めての場合、設定を出すには左上から「ファイルに戻る」をクリックしないといけないようです。
-
-#### ステップ2：Personal Access Tokenの生成
-
-1. **「セキュリティ」タブをクリック**
-
-2. **下にスクロールして「個人アクセストークン」セクションを見つける**
-
-3. **「新規トークンを作成」をクリック**
-
-4. **トークンの設定**
-
-```
-トークン名: figma-mcp-free（わかりやすい名前）
-有効期限: 30日間（または希望の期間）
-
-Figma MCP用に推奨するチェック項目：
-✅ 必須（これらは絶対チェック）
-
-ファイルのコンテンツ - デザインファイル読み取りに必須
-ファイルのメタデータ - ファイル情報取得に必須
-現在のユーザー - API認証確認に必要
-
-⚡ 推奨（MCPの機能を最大化）
-
-ライブラリのコンテンツ - コンポーネント/スタイル取得
-ライブラリアセット - Design Token抽出に有用
-チームライブラリのコンテンツ - チーム共有コンポーネント対応
-
-🔧 オプション（高度な機能用）
-
-ファイルバージョン - 履歴管理機能を作る場合
-プロジェクト - プロジェクト全体の管理機能
-Webフック - リアルタイム同期機能（将来実装予定）
-開発リリース - Dev Mode相当の機能
-
-🚫 不要
-
-ファイルの開発リリース - 読み取り専用なら不要
-
-### 🛡️ 最小権限で OK
-
-**必要最小限 - この4つだけで十分:**
-✅ 現在のユーザー
-✅ ファイルのコンテンツ
-✅ ファイルのメタデータ
-✅ ライブラリのコンテンツ
-
-**🔄 足りなければ再発行**
-権限が不足した場合は後からトークンを再発行すれば大丈夫です。初心者はスコープを過剰にしがちですが、まずは最小構成で動作確認してから拡張していくのがベストプラクティスです。
-```
-
-5. **「トークンを生成」をクリック**
-
-6. **⚠️ 超重要：トークンをコピーして保存**
-
-```
-例：figd_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-- **このトークンは二度と表示されません！**
-
-- メモ帳などに必ず保存してください
-
-## 📊 **Figma APIの権限制限構造**
-
-これが囲い込み戦略の核心部分です。
-
-### 囲い込み比較チャート
-
-![Comparison chart for enclosure strategies](./assets/figma_comparison_chart.svg)
-
-### **Personal Access Token（無料）**
-
-- ✅ 読み取り専用
-
-- ❌ 書き込み権限なし
-
-- ❌ Dev Mode API制限
-
-### **有料プラン（Dev/Full seat）**
-
-- ✅ Dev Mode API
-
-- ✅ 一部書き込み権限
-
-- ✅ 高度なWebhook
-
-## 🔥 **これこそオープンソースラッピング商法の典型例**
-
-```
-Figma REST API（本来は読み書き可能な技術）
-↓
-人為的に権限制限を追加
-↓  
-「書き込みたければ有料プランへ」
-↓
-無料の技術に課金構造を押し付け
-```
-
-## ⚡ **でも大丈夫！読み取り専用でも十分すぎる価値**
-
-**figma-mcp-freeで実現できること：**
-
-- デザイントークン抽出 → CSS/Tailwind生成
-
-- コンポーネント構造解析 → React/Vue生成
-
-- レイアウト情報取得 → レスポンシブ対応
-
-- カラー/フォント情報 → テーマファイル生成
-
-- アセット一括取得 → 最適化画像出力
-
-**これらは全て読み取り専用で可能です！**
-
-## 書き込みについて
-
-このプロジェクトは意図的にread-onlyとしており、Figmaへの書き込みやブラウザ自動操作は対象外です。書き込みが必要な作業は、Figmaの公式Plugin APIやエディタ上の適切なワークフローを別途利用してください。
-
-## 💻 Claude Codeでの設定と使用方法
-
-### ステップ1：Claude Codeのインストール
-
-```
-# npmでインストール
-npm install -g @anthropic-ai/claude-code
-
-# インストール確認
-claude --version
-```
-
-### ステップ2：認証
-
-```
-# Claude Codeを初回起動
-claude
-
-# ブラウザが開くので、Claudeアカウントでログイン
-# またはAPIキーを使用
-```
-
-## 🚀 無料MCPサーバーのセットアップ
-
-## 最短で正しくつながるコマンド（Claude Code）
-
-**ユーザースコープ**に追加する例：
-
-```
-# 新しい（※露出していない）トークンを使ってください
-claude mcp add figma --scope user \
-  --env FIGMA_TOKEN=figd_xxx \
-  -- npx -y figma-developer-mcp --stdio
-```
-
-### アーキテクチャ全体像
-
-![Architecture diagram for figma-mcp-free](./assets/figma_architecture_diagram.svg)
-
-確認：
-
-```
-claude mcp list   # figma が出てくること
-claude            # Claude Code を起動
-# 起動後、エディタ内で
-/mcp               # "figma" が Connected ならOK
-```
-
-> `--` は **Claude のフラグ**と**サーバー側の引数**を区切るために必須です。[Anthropic](https://docs.anthropic.com/en/docs/claude-code/mcp)
-
-### プロジェクト共有したい場合
-
-プロジェクトのルートに **`.mcp.json`** を置くやり方が公式です：
-
-```
+```json
 {
-  "mcpServers": {
-    "figma": {
-      "command": "npx",
-      "args": ["-y", "figma-developer-mcp", "--stdio"],
-      "env": { "FIGMA_TOKEN": "figd_xxx" }
-    }
-  }
+  "figmaUrl": "https://www.figma.com/design/FILE/Example",
+  "nodeIds": ["1:2", "3:4", "5:6"],
+  "depth": 2
 }
 ```
 
-（このファイル方式は `--scope project` と同じ保存先になります。）
+## 9. code generation
 
-## よくある見落としチェック
+1 node:
 
-- **.env は自動読込されません。**  
-    `export FIGMA_TOKEN=...` するか、上のように `--env` / `.mcp.json` で渡してください。
-
-- **トークン健全性チェック**（まずはAPIが通るかだけ確認）  
-    `curl -sH "X-Figma-Token: $FIGMA_TOKEN" https://api.figma.com/v1/me`  
-    ユーザーJSONが返れば鍵は有効。Personal Access Token は **`X-Figma-Token` ヘッダ**で使うのが正解です。
-
-- **Figma Dev Mode MCP（公式）と混同しない**  
-    それは **Figmaデスクトップ内**で使う別物です。今回の npm 版はローカルの **stdio サーバー**で、使い分けが必要。
-
-- **Windows 直実行の注意**（WSLでなくネイティブWindowsの場合）  
-    `npx` を起動する時は `cmd /c` ラッパーが必要です：  
-    `claude mcp add my-server -- cmd /c npx -y <package>`
-
-## 代替サーバーを使うなら（HAPINS版）
-
-```
-npm i -g @hapins/figma-mcp
-FIGMA_ACCESS_TOKEN=figd_xxx npx @hapins/figma-mcp
-```
-
-（環境変数名が **ACCESS\_TOKEN** な点だけ違います）
-
-## 🤖 Codex CLIでの設定と使用方法
-
-### ステップ1：Codex CLIのインストール
-
-```
-# npmでインストール
-npm install -g @openai/codex
-
-# または yarn
-yarn global add @openai/codex
-```
-
-### ステップ2：初回セットアップ
-
-```
-# Codexを起動
-codex
-
-# 「Sign in with ChatGPT」を選択
-# ブラウザでログイン
-```
-
-### ステップ3：MCPサーバーの設定
-
-#### 設定ファイルの編集
-
-```
-# 設定ファイルを開く
-code ~/.codex/config.toml
-
-# または
-nano ~/.codex/config.toml
-```
-
-以下を追加：
-
-```
-# ~/.codex/config.toml
-
-# モデル（任意：省略時も gpt-5 が既定）
-model = "gpt-5"
-
-[mcp_servers.figma]
-command = "npx"
-args    = ["-y", "figma-developer-mcp", "--stdio"]
-env     = { FIGMA_TOKEN = "figd_xxx" }
-```
-
-### ステップ4：動作確認
-
-```
-# Codexを起動
-codex
-
-# プロンプトで確認
-> Show me available MCP servers
-
-# figmaが表示されればOK
-```
-
-## 🎨 実践：デザインからコード生成
-
-### ⚠️ 重要：対応URLの形式
-
-**✅ 対応:**
-- `https://www.figma.com/file/<FILE_ID>?node-id=1:2`
-- `https://www.figma.com/design/<FILE_ID>?node-id=1-2` (ハイフンはコロンに自動変換)
-
-**❌ 非対応:**
-- `https://www.figma.com/slides/...` (REST APIでノード情報が取得できません)
-- コミュニティページの一部リンク
-
-**node-id表記について:**
-- Figma UIでは `node-id=1-2` と表示されることがありますが、API/ツール側では `1:2` 形式に正規化されます
-- どちらの形式でも動作します
-
-### 準備：サンプルデザインの用意
-
-#### オプション1：自分のデザインを使用
-
-1. Figmaで新規ファイルを作成
-
-2. 簡単なボタンやカードをデザイン
-
-3. フレームまたはコンポーネントを選択
-
-#### オプション2：公開デザインシステムを使用
-
-```
-Material 3 Design Kit:
-https://www.figma.com/community/file/1035203688168086460
-```
-
-### 実際のコード生成
-
-#### Claude Codeでの使用例
-
-```
-# Claude Codeを起動
-claude
-
-# Figmaのリンクをコピー（例）
-# https://www.figma.com/file/xxxxx/MyDesign?node-id=1:2
-```
-
-**プロンプト例：**
-
-```
-FigmaのこのデザインをReactコンポーネントとして実装してください：
-[Figmaリンクをペースト]
-
-要件：
-- TypeScriptを使用
-- Tailwind CSSでスタイリング
-- レスポンシブ対応
-- アクセシビリティ考慮
-```
-
-#### Codex CLIでの使用例
-
-```
-# プロジェクトディレクトリで実行
-codex
-
-# プロンプト
-/model gpt-5-codex
-
-# Figmaデザインの実装依頼
-このFigmaデザインをReactコンポーネントとして実装してください：
-[Figmaリンク]
-MCPサーバーを使用してデザイントークンとレイアウト情報を取得してください。
-```
-
-以下のように伝えるといいかもしれません。実際にcodex CLIに聞いた内容が以下です。
-
-既に ~/.codex/config.toml に Figma MCP サーバーの設定と API キーが入っているので、依頼時には「Figma から直接トークン取得してOK」  
-など許可の明文化があると助かります（ネットワーク使用はデフォルト制限されるため、必要なら私から明示的に許可依頼を出します）。  
-\- 実装リクエストを書くときは、今の chatgpt.txt のようにターゲット URL を添えるだけでなく、生成物の置き場所（例: src/app/  
-components/<name>）、欲しい出力形式（コンポーネント + CSS Modules + 画像配置…）やテスト要件まで記してあると、読み込み→コード着手→  
-検証の流れが早くなります。  
-\- MCP で取得したいリソースが決まっている場合は、使うコマンドや nodeId、一緒に落としておきたいアセット（画像・JSON）の種類もメモし  
-ておくと、Figma 側へ問い合わせる際に迷わず進められます。  
-\- 逆に「今回はトークン取得済み」「ローカルにある tokens.json を使う」等あれば、そのパスや内容を併記するとネットワークアクセスなし  
-で即作業に入れます。  
-\- 今回のように .codex に共通設定を置いておけば十分なので、今後もこのスタイルで問題ありません。追加で注意点があれば chatgpt.txt に  
-書き足してもらえばこちらで読み取ります。
-
-**chatgpt.txtの内容**
-
-```
-# Figmaデザイン実装依頼テンプレート
-
-## ゴール
-- 指定のFigmaノードをNext.js（React）コンポーネントとして実装し、必要なスタイルやアセットを組み込む。
-
-## 依頼時に含める情報
-1. Figmaリンクとnode-id（例: https://www.figma.com/...&node-id=60799-137 など）。
-2. 出力ファイルの場所と構成例（例: `src/app/components/IntroductionCard.tsx`, `.module.css`, 画像配置先など）。
-3. テスト・検証方法（例: `npm run lint`, `npm run build`, ブラウザでの確認など）。
-4. 利用したいデザイントークンやレイアウトデータの入手方法：
-   - `.codex/config.toml` に定義済みのFigma MCPサーバーを使用して取得してよいかどうか。
-   - もしくはローカルの tokens.json / CSS といった代替データのパス。
-5. 特別な制約（レスポンシブ対応の要否、アクセシビリティ要件、コメント方針など）。
-```
-
-参考  
-\- Figma MCPサーバー設定は \`~/.codex/config.toml\` に登録済み。  
-\- ネットワークアクセスが必要な場合は、コマンド実行時に承認を求めることがあるため、事前に許可方針を明記しておくとスムーズです。  
-\- 画像などのバイナリアセットが必要なら、Figmaからエクスポートするか、ローカルに配置済みパスを提示してください。  
-  
-上記を満たす依頼であれば、最小限のやり取りで実装・テストまで対応できます。
-
-**実際の例**
-
-```
-# Figmaデザイン実装依頼テンプレート（例）
-
-## ゴール
-- 指定のFigmaノードをNext.js（React）でコンポーネント化し、必要なスタイルとアセットを追加する。
-
-## 依頼時に含める情報
-1. Figmaリンクと node-id：
-   https://www.figma.com/design/zulHEkmFfSjlprJcoxtPCv/Material-3-Design-Kit--Community-?node-id=60799-137&t=f7VWEEISfmSKhtT0-0
-2. 出力ファイル構成（例）：
-   - `src/app/components/IntroductionCard.tsx`
-   - `src/app/components/IntroductionCard.module.css`
-   - 画像は `public/images/` 配下に配置（通常のNext.js手順でOK）
-
-### 📷 画像アセットの扱い - Next.js実装指針
-
-**⚠️ 重要な原則:**
-- **FigmaのビューURLを`<img>`に直貼りしない** - 有効期限付きCDNのため時間が経つと404エラーになります
-- **推奨アプローチ:**
-  1. ローカル`/public`へエクスポート（最も確実）
-  2. ビルド時にダウンロードして配置
-
-**外部参照する場合（開発者向け）:**
-```javascript
-// next.config.js
-module.exports = {
-  images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'images.figma.com',
-        pathname: '/**',
-      },
-    ],
-  },
-}
-```
-⚠️ 警告: `images.figma.com`のURLは期限付きで、本番環境では404になる可能性があります
-3. テスト・検証方法：
-   - `npm run lint`
-   - `npm run build`
-   - ブラウザで `http://localhost:3000/` を確認
-4. デザイントークン／レイアウトデータの取得：
-   - `.codex/config.toml` のFigma MCPサーバーを使用して取得してよい
-5. 特別な制約：特になし
-
-このフォーマットで依頼すれば、必要な情報が揃った状態で作業に入れます。
-```
-
-
-## 🔧 トラブルシューティング
-
-### よくある問題と解決方法
-
-#### 問題1：トークンが無効と表示される
-
-**原因：** トークンのコピーミス、期限切れ、スコープ不足
-
-**解決方法：**
-
-```
-# トークンの再生成
-1. Figma Settings > Security
-2. 古いトークンを「Revoke」
-3. 新しいトークンを生成
-4. 環境変数を更新
-
-export FIGMA_TOKEN="新しいトークン"
-```
-
-#### 問題2：MCPサーバーが接続できない
-
-**原因：** ファイアウォール、ポート競合、Node.jsバージョン
-
-**解決方法：**
-
-```
-# Node.jsバージョン確認
-node --version
-# v18以上が必要
-
-# ポートを指定して起動
-npx figma-developer-mcp --port 3334 --figma-api-key=トークン
-
-# ファイアウォール確認（Windows）
-netsh advfirewall firewall show rule name=all | findstr 3333
-
-# Windows PowerShellでの実行例
-powershell -Command "npx -y figma-developer-mcp --stdio"
-```
-
-#### 問題3：コード生成がうまくいかない
-
-**原因：** デザインの複雑さ、プロンプトの不明確さ
-
-**解決方法：**
-
-1. **シンプルなコンポーネントから始める**
-    - 単一のボタン
-    
-    - シンプルなカード
-    
-    - 基本的なフォーム
-
-2. **明確なプロンプトを使用**
-
-```
-良い例：
-"このボタンコンポーネントをReactで実装。
-Tailwindを使用し、hover効果とクリックイベントを含める"
-
-悪い例：
-"これ作って"
-```
-
-3. **段階的に複雑にする**
-    - まず基本実装
-    
-    - 次にスタイリング
-    
-    - 最後に機能追加
-
-#### 問題4：URLを渡しても「ノードが見つからない」エラー
-
-**原因：** `/slides`リンクまたはnode-id未指定
-
-**解決方法：**
-
-```
-症状：URL を渡しても「ノードが見つからない」
-原因：/slides や node-id 未指定
-対処：Figma で対象フレームを選択 → 右クリック Copy link → /file|/design?...node-id=... を取得 → 1-2 を 1:2 に直す
-
-具体的手順：
-1. Figmaでコンポーネント/フレームを右クリック
-2. "Copy link"を選択
-3. URLが /file または /design で始まることを確認
-4. node-id パラメータが含まれることを確認
-5. 1-2 形式を 1:2 に変換（自動変換されるので任意）
-```
-
-**よくある間違い:**
-- ❌ `https://www.figma.com/slides/...` → API非対応
-- ❌ `https://www.figma.com/file/xxx` → node-id不足
-- ✅ `https://www.figma.com/file/xxx?node-id=1:2` → 正しい形式
-
-#### 問題5：Permission deniedエラー
-
-**解決方法：**
-
-```
-# npmのグローバルインストール時
-# sudoを使わない（推奨）
-npm config set prefix ~/.npm-global
-export PATH=~/.npm-global/bin:$PATH
-
-# それでもダメな場合はnpxを使用
-npx @anthropic-ai/claude-code
-```
-
-## 🎯 ベストプラクティス
-
-### 1\. プロジェクト構造の整理
-
-```
-my-project/
-├── .env                 # APIキーを保存
-├── .claude/
-│   └── config.json     # Claude設定
-├── src/
-│   └── components/     # 生成されたコンポーネント
-└── figma-designs/      # デザインのリンクや情報
-
-注意: Codexの設定は ~/.codex/ （ホームディレクトリ）に配置します
-```
-
-### 2\. デザイントークンの活用
-
-```
-// tokens.js - MCPで自動抽出
-export const tokens = {
-  colors: {
-    primary: '#3B82F6',
-    secondary: '#10B981',
-    // Figmaから自動取得
-  },
-  spacing: {
-    xs: '4px',
-    sm: '8px',
-    // Figmaから自動取得
-  }
-};
-```
-
-### 3\. コンポーネントの命名規則
-
-```
-Figmaレイヤー名 → コンポーネント名
-- Button/Primary → ButtonPrimary.tsx
-- Card/Product → CardProduct.tsx
-- Form/Login → FormLogin.tsx
-```
-
-### 4\. バージョン管理
-
-**`.gitignoreに追加:**
 ```bash
+pnpm --filter figma-mcp-free dev -- \
+  generate "$FIGMA_URL" \
+  --framework react > Card.tsx
+```
+
+複数node:
+
+```bash
+pnpm --filter figma-mcp-free dev -- \
+  generate-many "$FIGMA_URL" 1:2 3:4 5:6 \
+  --framework react \
+  --out-dir ./generated
+```
+
+`generate-many`はnodeをbatch取得し、各nodeのfileとmanifest JSONを出します。
+
+対応framework:
+
+- `react`
+- `vue`
+- `svelte`
+- `html`
+
+生成物はstarter codeです。pixel-perfect保証ではありません。実projectのcomponent、CSS、responsive、accessibility、testへ合わせてAIまたは人間が仕上げてください。
+
+## 10. Design Token
+
+```bash
+pnpm --filter figma-mcp-free dev -- \
+  export-tokens "$FIGMA_URL" > tokens.json
+```
+
+生成時に利用:
+
+```bash
+pnpm --filter figma-mcp-free dev -- \
+  generate "$FIGMA_URL" \
+  --framework react \
+  --use-tokens ./tokens.json
+```
+
+## 11. その他のCLI
+
+fileを読む:
+
+```bash
+pnpm --filter figma-mcp-free dev -- file "$FIGMA_URL" --depth 2
+```
+
+frame一覧:
+
+```bash
+pnpm --filter figma-mcp-free dev -- frames "$FIGMA_URL" --depth 3
+```
+
+component検索:
+
+```bash
+pnpm --filter figma-mcp-free dev -- \
+  components "$FIGMA_URL" \
+  --query Button \
+  --limit 20 \
+  --json
+```
+
+cacheを使わず最新値を取り直したい場合は、対応commandへ`--refresh`を付けます。
+
+## 12. MCP server
+
+```bash
+pnpm -r build
+node packages/mcp-server/dist/index.js
+```
+
+設定例:
+
+- [Codex](../examples/codex-config/mcp.json)
+- [Cursor](../examples/cursor-config/mcp.json)
+
+公開tools:
+
+| Tool | 用途 |
+| --- | --- |
+| `get_file` | file取得 |
+| `get_nodes` | node一括取得 |
+| `inspect_selection` | 選択nodeのcompact context |
+| `get_components` | component metadata |
+| `list_frames` | frame一覧 |
+| `export_tokens` | token抽出 |
+| `generate_code` | starter code生成 |
+| `get_cache_stats` | cache / retry / network統計 |
+| `clear_cache` | memory cache削除 |
+
+環境変数:
+
+| 変数 | default | 内容 |
+| --- | ---: | --- |
+| `FIGMA_MCP_CACHE_TTL_MS` | `300000` | memory cache時間 |
+| `FIGMA_MCP_MAX_CACHE_ENTRIES` | `128` | 最大cache entry |
+| `FIGMA_MCP_REQUEST_TIMEOUT_MS` | `20000` | 1 attemptのtimeout |
+| `FIGMA_MCP_MAX_RETRIES` | `2` | transient retry回数 |
+| `FIGMA_MCP_NODE_BATCH_SIZE` | `100` | 1 requestのnode上限 |
+
+cacheはmemory-onlyで、process終了時に消えます。private design dataをdisk cacheへ自動保存しません。
+
+## 13. fork対応
+
+forkは単なるcopyではなく、改善が生まれる場所として扱います。
+
+```bash
+git remote add upstream https://github.com/superdoccimo/figma-mcp-free.git
+git fetch upstream
+git switch main
+git merge --ff-only upstream/main
+```
+
+fork network監査:
+
+```bash
+GITHUB_TOKEN=... node tools/audit-forks.mjs --repo owner/repository
+```
+
+GitHub Actionsの`Fork intelligence` workflowはread-onlyです。forkへpushしたり、勝手にmergeしたり、issueを作ったりしません。
+
+詳細: [Forks, downstreams, and contribution flow](../docs/forks.md)
+
+実際にforkから発見したPAT permission修正を本家へ取り込み、atomic writeとdoctor検査まで拡張しています。由来とcreditは[CHANGELOG](../CHANGELOG.md)に残しています。
+
+## 14. security
+
+絶対に公開しないもの:
+
+- PAT
+- private Figma file ID
+- private raw API response
+- private `inspect_selection` output
+- private design textやlayer name
+
+Gitへ追加しない例:
+
+```gitignore
 .env
+.env.*
 *.log
 node_modules/
-.claude/
 ```
 
-**重要な注意事項:**
-- トークンは絶対にコミットしない！
-- .codex/ はホームディレクトリ (~/.codex/) に配置するため、プロジェクト内には不要
-- 🚨 **セキュリティ注意事項:**
-  - 公開リポジトリのIssue/PRに実トークンを貼らない
-  - 環境変数ファイルは必ず.gitignoreに追加
-  - 設定ファイルをコミットする前に中身を確認
+Figma image APIのURLは期限付きになることがあります。production assetは自分のrepository、CDN、object storageへexportして管理してください。
 
-## 🚀 応用編：さらに高度な使い方
+脆弱性報告はpublic issueではなく[SECURITY.md](../SECURITY.md)に従ってください。
 
-### デザインシステムの自動生成
+## 15. 開発と検証
 
-```
-# Claude Codeで実行
-claude
-
-# プロンプト
-"Figmaのこのデザインシステムから、
-完全なReactコンポーネントライブラリを生成してください。
-Storybookのストーリーも含めてください。"
+```bash
+pnpm install --frozen-lockfile
+pnpm run check
+pnpm run pack:check
 ```
 
-### CI/CDパイプラインとの統合
+CIでは以下を確認します。
 
+- build
+- typecheck
+- unit / fixture test
+- offline smoke
+- secret pattern
+- fork portability
+- package contents
+- Node.js 18 / 20 / 22
+
+## 16. AIへの依頼テンプレート
+
+```text
+このFigma nodeを実装してください。
+
+Figma URL:
+https://www.figma.com/design/<FILE_ID>/Example?node-id=1-2
+
+取得方針:
+- 最初にinspect_selectionを使う
+- 複数nodeが必要ならget_nodesでbatchする
+- file全体は必要な場合だけdepthを付けて読む
+- API rate limitを考慮し、同じrequestを繰り返さない
+
+実装先:
+src/components/Card.tsx
+
+要件:
+- TypeScript
+- responsive
+- keyboard accessibility
+- 既存Design Tokenを優先
+- lint / test / buildを実行
+- Figmaへ書き込まない
 ```
-# .github/workflows/design-sync.yml
-name: Sync Figma Design
-on:
-  schedule:
-    - cron: '0 0 * * *'  # 毎日実行
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Setup Node
-        uses: actions/setup-node@v2
-      - name: Generate Components
-        env:
-          FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
-        run: |
-          npx figma-developer-mcp --sync
-```
 
-### 複数フレームワークの対応
+## 関連資料
 
-```
-// config.js
-module.exports = {
-  frameworks: ['react', 'vue', 'svelte'],
-  styling: ['tailwind', 'styled-components', 'css-modules'],
-  typescript: true,
-  generateTests: true
-};
-```
+- [English README](../README.md)
+- [Architecture](../docs/architecture.md)
+- [Quickstart](../docs/quickstart.md)
+- [Troubleshooting](../docs/troubleshooting.md)
+- [Fork support](../docs/forks.md)
+- [Roadmap](../ROADMAP.md)
+- [Changelog](../CHANGELOG.md)
 
-## 📊 比較：有料 vs 無料ソリューション
-
-| 機能 | Figma公式（有料） | コミュニティ版（無料） |
-| --- | --- | --- |
-| **料金** | $15/月〜 | **完全無料** |
-| **MCP対応** | ✅ | ✅ |
-| **Personal Access Token** | ✅ | ✅ |
-| **コード生成** | ✅ | ✅ |
-| **デザイントークン抽出** | ✅ | ✅ |
-| **更新頻度** | 定期的 | コミュニティ依存 |
-| **サポート** | 公式サポート | コミュニティサポート |
-| **セットアップ難易度** | 簡単 | 少し手間（本記事で解決） |
-
-## 🎉 まとめと次のステップ
-
-### 達成したこと
-
-✅ Figmaの無料プランでMCPを使える環境を構築  
-✅ Personal Access Tokenでの認証設定  
-✅ Claude CodeとCodex CLIの両方でMCP連携  
-✅ デザインから実際のコード生成まで実現
-
-### 次のステップ
-
-1. **実プロジェクトへの適用**
-    - 既存プロジェクトのUIコンポーネント移行
-    
-    - 新規プロジェクトでのデザインシステム構築
-
-2. **チーム導入**
-    - チームメンバーへの展開
-    
-    - 共有設定ファイルの作成
-
-3. **カスタマイズ**
-    - 独自のMCPサーバー開発
-    
-    - 社内デザインシステムとの統合
-
-### コミュニティとリソース
-
-- **GitHub Issues**: 問題報告と解決策の共有
-
-- **Discord**: リアルタイムサポート
-
-- **ドキュメント**:
-    - [MCP公式](https://modelcontextprotocol.io/)
-    
-    - [Figma API](https://www.figma.com/developers/api)
-
-## 🙏 最後に
-
-オープンソースの力で、企業の囲い込み戦略に対抗できることを証明しました。この方法を使えば、誰でも無料で最先端のAI支援開発を実現できます。
-
-### ワークフロータイムライン
-
-![Workflow timeline diagram for figma-mcp-free adoption](./assets/figma_workflow_timeline.svg)
-
-**記事が役立った場合：**
-
-- ⭐ GitHubでスターをお願いします
-
-- 🔄 SNSでシェアして広めてください
-
-- 💬 改善提案やフィードバックを歓迎します
-
-## 📚 参考資料
-
-### チュートリアル・ガイド
-- 🌐 **English**: [Comprehensive Setup Guide](https://betelgeuse.work/figma-mcp/)
-- 🌍 **Español**: [Guía de Configuración](https://ehrigite.com/figma-mcp/)
-- 🇯🇵 **日本語**: [詳細セットアップガイド](https://minokamo.tokyo/2025/09/18/9360/)
-
-### 動画チュートリアル
-- 🎥 **English**: [figma-mcp-free Setup Tutorial](https://youtu.be/5c2QNSXRwyk)
-- 🎥 **日本語**: [figma-mcp-free セットアップチュートリアル](https://youtu.be/f2YqnKAy80Y)
-
-### 謝辞
-
-このプロジェクトは、オープンソースコミュニティの貢献により実現しました：
-
-- Anthropic（MCPのオープンソース化）
-
-- figma-developer-mcpの開発者
-
-- 世界中のコントリビューター
-
-**バージョン**: 1.0.0  
-**最終更新**: 2025年9月  
-**ライセンス**: MIT
-
-_本記事は定期的に更新されます。最新情報はGitHubリポジトリをご確認ください。_
+この文書は2026年のFigma API制限と現行repository実装に合わせて再構成しています。価格、plan、seat、API limitは変わるため、数値を固定的な約束として扱わず公式documentationを確認してください。
