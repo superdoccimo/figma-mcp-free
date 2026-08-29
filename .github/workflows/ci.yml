@@ -52,5 +52,8 @@ jobs:
       - name: Check fork portability
         run: pnpm run check:portability
 
+      - name: Check local plugin integrity
+        run: pnpm run check:plugin
+
       - name: Check package contents
         run: pnpm run pack:check
