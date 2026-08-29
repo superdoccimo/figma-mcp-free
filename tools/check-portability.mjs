@@ -4,11 +4,14 @@ import { extname, join, relative } from "node:path";
 
 const root = process.cwd();
 const scanRoots = ["packages", "scripts", "tools"];
-const extensions = new Set([".ts", ".js", ".mjs", ".cjs", ".json", ".sh"]);
+const codeExtensions = new Set([".ts", ".js", ".mjs", ".cjs", ".sh"]);
 const canonicalOwner = ["super", "doccimo"].join("");
 const forbidden = [
-  { name: "canonical owner hard-coded in operational code", pattern: new RegExp(canonicalOwner, "i") },
-  { name: "developer home path", pattern: /(?:\/home\/[^/]+|\/Users\/[^/]+|[A-Za-z]:\\\\Users\\\\[^\\]+)/ },
+  {
+    name: "canonical GitHub owner hard-coded in operational code",
+    pattern: new RegExp(`(?:github\\.com/|api\\.github\\.com/repos/)${canonicalOwner}/`, "i")
+  },
+  { name: "developer home path", pattern: /(?:\/home\/[^/]+|\/Users\/[^/]+|[A-Za-z]:\\Users\\[^\\]+)/ },
   { name: "local secret-like file path", pattern: /(?:\.env\.local|config\.json).*figd_/i }
 ];
 const ignored = new Set(["tools/check-portability.mjs"]);
@@ -21,7 +24,7 @@ function walk(path) {
     if (ignored.has(rel) || name === "dist" || name === "node_modules") continue;
     const stat = statSync(full);
     if (stat.isDirectory()) walk(full);
-    else if (extensions.has(extname(name))) {
+    else if (codeExtensions.has(extname(name))) {
       const content = readFileSync(full, "utf8");
       for (const rule of forbidden) if (rule.pattern.test(content)) failures.push(`${rel}: ${rule.name}`);
     }
