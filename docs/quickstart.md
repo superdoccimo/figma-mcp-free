@@ -1,111 +1,143 @@
 # Quickstart
 
-This guide walks through the minimum setup to run `figma-mcp-free` locally and call the tools from the CLI or an MCP client.
+This guide covers the minimum setup for both supported read paths:
 
-## 1. Install dependencies
+- **Local Plugin Bridge** for the design currently open in Figma Desktop, without a PAT or REST call.
+- **REST mode** for URLs, headless automation, CI, and machines without Figma Desktop.
+
+## 1. Install and build
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 pnpm -r build
 ```
 
-Use Node.js 18+ and ensure `pnpm` is available (install with `npm install -g pnpm` if required).
+Use Node.js 18 or newer and pnpm 9.
 
-## 2. Run the offline demo
-
-Start here when you do not have a Figma token yet, or when you only want to verify the generator.
+## 2. Verify the generator offline
 
 ```bash
-pnpm --filter figma-mcp-free dev -- generate-from-json ./examples/sample-node.json --framework react --use-tokens ./examples/sample-tokens.json
+pnpm --filter figma-mcp-free dev -- \
+  generate-from-json ./examples/sample-node.json \
+  --framework react \
+  --use-tokens ./examples/sample-tokens.json
 ```
 
-This command reads local JSON files only. It does not call the Figma API.
+This reads local JSON only.
 
-## 3. Store your Figma token
+# Path A: Local Plugin Bridge
 
-You can export a Personal Access Token from the Figma settings screen. Once copied, store it with the CLI so both the server and the CLI tools can find it later.
+## 3A. Start the bridge
+
+```bash
+pnpm --filter figma-mcp-free bridge -- serve
+```
+
+Keep the terminal open and copy the printed loopback URL and pairing token.
+
+## 4A. Prepare the development plugin
+
+Create a development plugin in Figma Desktop once, copy its generated numeric ID, then run:
+
+```bash
+node plugins/local-bridge/create-manifest.mjs <FIGMA_GENERATED_PLUGIN_ID>
+```
+
+Import `plugins/local-bridge/manifest.json` as a development plugin.
+
+## 5A. Capture and inspect
+
+Open the plugin, paste the bridge URL and token, select a node, and press **Capture & Send**.
+
+```bash
+export FIGMA_PLUGIN_BRIDGE_URL="http://127.0.0.1:3845"
+export FIGMA_PLUGIN_BRIDGE_TOKEN="<PAIRING_TOKEN>"
+
+node packages/cli/dist/bridge-cli.js status
+node packages/cli/dist/bridge-cli.js inspect --depth 2 --max-children 20
+node packages/cli/dist/bridge-cli.js generate --framework react
+```
+
+The plugin does not transmit selection changes automatically and provides no write operations.
+
+See [the full plugin guide](../plugins/local-bridge/README.md).
+
+# Path B: REST Mode
+
+## 3B. Configure a Figma PAT
+
+Prefer `FIGMA_TOKEN` for temporary sessions and CI. To store a token in the protected local config:
 
 ```bash
 pnpm --filter figma-mcp-free dev -- init
 ```
 
-Run non-interactively (CI/scripts) with `pnpm --filter figma-mcp-free dev -- init --token <FIGMA_TOKEN>`.
-
-Verify the persisted config:
+Verify only the token state, without printing the token:
 
 ```bash
 pnpm --filter figma-mcp-free dev -- config get token
+pnpm --filter figma-mcp-free dev -- config security
 ```
 
-If the environment variable `FIGMA_TOKEN` is present it takes precedence at runtime.
+## 4B. Prepare a Figma URL
 
-## 4. Prepare a Figma URL
+Use a `/file` or `/design` link to a selected frame or component. The CLI normalizes URL node IDs such as `node-id=1-2` to `1:2`. `/slides` links are not supported by the REST workflow.
 
-Use a Figma `/file` or `/design` link to a selected frame or component. `/slides` links are not supported by this REST API workflow.
-
-The CLI and MCP tools accept the full Figma URL and normalize URL node IDs such as `node-id=1-2` to the API format (`1:2`) automatically.
-
-Optional verification:
+## 5B. Diagnose and use the CLI
 
 ```bash
-curl -H "X-Figma-Token: $FIGMA_TOKEN" \
-  "https://api.figma.com/v1/files/<FILE_ID>/nodes?ids=<NODE_ID>"
-```
+FIGMA_URL="https://www.figma.com/design/<FILE_ID>/Example?node-id=1-2"
 
-If JSON is returned, the token, file ID, and node ID are aligned.
-
-## 5. Try the CLI
-
-```bash
-FIGMA_URL="https://www.figma.com/design/<FILE_ID>/...?node-id=1-2"
-pnpm --filter figma-mcp-free dev -- components "$FIGMA_URL" --limit 3
+pnpm --filter figma-mcp-free dev -- doctor "$FIGMA_URL"
+pnpm --filter figma-mcp-free dev -- inspect-selection "$FIGMA_URL" --depth 2 --max-children 20
+pnpm --filter figma-mcp-free dev -- nodes "$FIGMA_URL" 1:2 3:4 5:6 --depth 2
 pnpm --filter figma-mcp-free dev -- export-tokens "$FIGMA_URL" > tokens.json
 pnpm --filter figma-mcp-free dev -- generate "$FIGMA_URL" --framework react --use-tokens ./tokens.json
 ```
 
-You can still pass `<FILE_ID> <NODE_ID>` directly:
+Prefer `get_nodes` or the `nodes` command for multiple node IDs. Use `--refresh` only when a fresh network read is required.
+
+# Unified MCP Server
+
+## 6. Start the server
 
 ```bash
-pnpm --filter figma-mcp-free dev -- generate <FILE_ID> <NODE_ID> --framework react
-```
-
-## 6. Start the MCP server
-
-```bash
-pnpm -r build
 node packages/mcp-server/dist/index.js
 ```
 
-The server expects `FIGMA_TOKEN` in the environment or falls back to the stored token via `@figma-mcp-free/config`.
+The same server exposes REST and Local Plugin tools. Configure either or both credential sets in the server process environment:
 
-## 7. Connect from your IDE
+```json
+{
+  "env": {
+    "FIGMA_TOKEN": "<OPTIONAL_REST_PAT>",
+    "FIGMA_PLUGIN_BRIDGE_URL": "http://127.0.0.1:3845",
+    "FIGMA_PLUGIN_BRIDGE_TOKEN": "<OPTIONAL_PAIRING_TOKEN>"
+  }
+}
+```
 
-- Claude Desktop / Claude Code: register the server JSON manifest.
-- Cursor / Windsurf / Cline: add the STDIO server with the command above as the executable.
+Credentials are intentionally absent from model-visible tool schemas.
 
-The server exposes these MCP tools:
+## 7. Choose the right MCP tool
+
+REST tools:
 
 - `get_file`
+- `get_nodes`
+- `inspect_selection`
 - `get_components`
 - `list_frames`
-- `generate_code`
 - `export_tokens`
+- `generate_code`
+- `get_cache_stats`
+- `clear_cache`
 
-Each tool accepts either `fileId` or `figmaUrl`. `generate_code` can read `nodeId` from the URL when it includes `?node-id=...`.
+Local Plugin tools:
 
-For large files, MCP `get_file` and `list_frames` accept an optional `depth` value. For example, `depth: 2` limits the file payload to pages and their direct children.
+- `get_plugin_bridge_status`
+- `get_current_selection`
+- `inspect_current_selection`
+- `generate_current_selection`
 
-### Choosing the right tool
-
-Use `generate_code` when you have a selected frame or component URL and want
-starter React, Vue, Svelte, or HTML output. Use `get_components` when you need
-the file's component inventory, such as component keys, names, and node IDs. It
-does not gather selected-layer implementation context. Use `get_file` with a
-small `depth`, or `list_frames`, when you need to inspect structure before
-choosing a node.
-
-Figma's hosted or desktop MCP server may expose different workflow-oriented
-tools. This project is a read-only REST API workflow, so match requests to the
-tool names above instead of assuming official server tool names are available.
-
-Refer to `docs/troubleshooting.md` if calls fail due to token scopes, rate limiting, or manifest configuration issues.
+Use compact inspection before requesting raw node or file JSON. Refer to [troubleshooting](troubleshooting.md) for authentication, rate limits, plugin CSP, and bridge pairing problems.
