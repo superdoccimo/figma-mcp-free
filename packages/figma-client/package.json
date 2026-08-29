@@ -1,7 +1,7 @@
 {
   "name": "@figma-mcp-free/figma-client",
   "version": "0.1.0",
-  "description": "Read-only Figma REST API client and selection inspector",
+  "description": "Read-only Figma REST API client, selection inspector, and local plugin bridge",
   "type": "module",
   "files": ["dist", "README.md", "LICENSE"],
   "main": "./dist/index.js",
@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./plugin-bridge": {
+      "types": "./dist/plugin-bridge.d.ts",
+      "import": "./dist/plugin-bridge.js"
     }
   },
   "engines": { "node": ">=18" },
@@ -21,7 +25,7 @@
   },
   "homepage": "https://github.com/superdoccimo/figma-mcp-free#readme",
   "bugs": { "url": "https://github.com/superdoccimo/figma-mcp-free/issues" },
-  "keywords": ["figma", "rest-api", "read-only", "mcp"],
+  "keywords": ["figma", "rest-api", "plugin", "local-bridge", "read-only", "mcp"],
   "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsc -p ."
