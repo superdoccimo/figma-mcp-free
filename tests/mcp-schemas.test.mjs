@@ -34,6 +34,33 @@ test("get_nodes enforces a bounded non-empty batch", () => {
   assert.equal(schema.nodeIds.safeParse(Array.from({ length: 501 }, (_, i) => String(i))).success, false);
 });
 
+test("plugin bridge tools keep credentials out of model-visible schemas", () => {
+  assert.deepEqual(publicToolSchemas.get_plugin_bridge_status, {});
+  assert.deepEqual(Object.keys(publicToolSchemas.get_current_selection), ["index"]);
+  assert.deepEqual(Object.keys(publicToolSchemas.inspect_current_selection), ["index", "depth", "maxChildren"]);
+  assert.deepEqual(Object.keys(publicToolSchemas.generate_current_selection), ["index", "framework", "tokens", "varPrefix"]);
+  for (const name of [
+    "get_plugin_bridge_status",
+    "get_current_selection",
+    "inspect_current_selection",
+    "generate_current_selection"
+  ]) {
+    const keys = Object.keys(publicToolSchemas[name]);
+    assert.equal(keys.includes("token"), false);
+    assert.equal(keys.includes("url"), false);
+  }
+});
+
+test("plugin selection indexes and inspection limits are bounded", () => {
+  assert.equal(publicToolSchemas.get_current_selection.index.safeParse(0).success, true);
+  assert.equal(publicToolSchemas.get_current_selection.index.safeParse(49).success, true);
+  assert.equal(publicToolSchemas.get_current_selection.index.safeParse(50).success, false);
+  assert.equal(publicToolSchemas.inspect_current_selection.depth.safeParse(5).success, true);
+  assert.equal(publicToolSchemas.inspect_current_selection.depth.safeParse(6).success, false);
+  assert.equal(publicToolSchemas.inspect_current_selection.maxChildren.safeParse(100).success, true);
+  assert.equal(publicToolSchemas.inspect_current_selection.maxChildren.safeParse(101).success, false);
+});
+
 test("cache control tools are public and require no inputs", () => {
   assert.deepEqual(publicToolSchemas.get_cache_stats, {});
   assert.deepEqual(publicToolSchemas.clear_cache, {});
