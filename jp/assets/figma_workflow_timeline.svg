@@ -1,163 +1,70 @@
-<svg viewBox="0 0 1080 300" xmlns="http://www.w3.org/2000/svg">
-  <!-- Background -->
-  <rect width="1080" height="300" fill="transparent"/>
-  
-  <!-- Title -->
-  <text x="540" y="30" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#2f3542" text-anchor="middle">
-    🚀 5分で完了！figma-mcp-free セットアップフロー
-  </text>
-  
-  <!-- Conveyor Belt Background -->
-  <rect x="60" y="80" width="960" height="140" fill="#ddd6fe" rx="70"/>
-  <rect x="80" y="100" width="920" height="100" fill="#a29bfe" rx="50"/>
-  
-  <!-- Belt Pattern (dots to simulate movement) -->
-  <circle cx="120" cy="150" r="3" fill="#6c5ce7" opacity="0.7"/>
-  <circle cx="200" cy="150" r="3" fill="#6c5ce7" opacity="0.5"/>
-  <circle cx="280" cy="150" r="3" fill="#6c5ce7" opacity="0.8"/>
-  <circle cx="360" cy="150" r="3" fill="#6c5ce7" opacity="0.6"/>
-  <circle cx="440" cy="150" r="3" fill="#6c5ce7" opacity="0.9"/>
-  <circle cx="520" cy="150" r="3" fill="#6c5ce7" opacity="0.4"/>
-  <circle cx="600" cy="150" r="3" fill="#6c5ce7" opacity="0.7"/>
-  <circle cx="680" cy="150" r="3" fill="#6c5ce7" opacity="0.5"/>
-  <circle cx="760" cy="150" r="3" fill="#6c5ce7" opacity="0.8"/>
-  <circle cx="840" cy="150" r="3" fill="#6c5ce7" opacity="0.6"/>
-  <circle cx="920" cy="150" r="3" fill="#6c5ce7" opacity="0.9"/>
-  
-  <!-- Step 1: Token取得 -->
-  <rect x="100" y="60" width="140" height="120" fill="#ff7675" rx="12" stroke="#d63031" stroke-width="2"/>
-  <text x="170" y="85" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="white" text-anchor="middle">
-    STEP 1
-  </text>
-  <text x="170" y="110" font-family="Arial, sans-serif" font-size="18" fill="white" text-anchor="middle">
-    🔑
-  </text>
-  <text x="170" y="130" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle">
-    Personal Access
-  </text>
-  <text x="170" y="145" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle">
-    Token 取得
-  </text>
-  <text x="170" y="165" font-family="Arial, sans-serif" font-size="10" fill="#fff5f5" text-anchor="middle">
-    Figma.com で1分
-  </text>
-  
-  <!-- Arrow 1 -->
-  <path d="M 250 150 L 280 150" stroke="#2d3436" stroke-width="3" fill="none" marker-end="url(#arrowhead)"/>
-  
-  <!-- Step 2: CLIセットアップ -->
-  <rect x="290" y="60" width="140" height="120" fill="#fd79a8" rx="12" stroke="#e84393" stroke-width="2"/>
-  <text x="360" y="85" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="white" text-anchor="middle">
-    STEP 2
-  </text>
-  <text x="360" y="110" font-family="Arial, sans-serif" font-size="18" fill="white" text-anchor="middle">
-    ⚡
-  </text>
-  <text x="360" y="130" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle">
-    CLI セットアップ
-  </text>
-  <text x="360" y="145" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle">
-    npx init
-  </text>
-  <text x="360" y="165" font-family="Arial, sans-serif" font-size="10" fill="#fff5f5" text-anchor="middle">
-    自動設定で30秒
-  </text>
-  
-  <!-- Arrow 2 -->
-  <path d="M 440 150 L 470 150" stroke="#2d3436" stroke-width="3" fill="none" marker-end="url(#arrowhead)"/>
-  
-  <!-- Step 3: デザイントークン抽出 -->
-  <rect x="480" y="60" width="140" height="120" fill="#fdcb6e" rx="12" stroke="#e17055" stroke-width="2"/>
-  <text x="550" y="85" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="white" text-anchor="middle">
-    STEP 3
-  </text>
-  <text x="550" y="110" font-family="Arial, sans-serif" font-size="18" fill="white" text-anchor="middle">
-    🎨
-  </text>
-  <text x="550" y="125" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle">
-    デザイントークン
-  </text>
-  <text x="550" y="140" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle">
-    抽出・変換
-  </text>
-  <text x="550" y="165" font-family="Arial, sans-serif" font-size="10" fill="#fff5f5" text-anchor="middle">
-    W3C標準で瞬時
-  </text>
-  
-  <!-- Arrow 3 -->
-  <path d="M 630 150 L 660 150" stroke="#2d3436" stroke-width="3" fill="none" marker-end="url(#arrowhead)"/>
-  
-  <!-- Step 4: コード生成 -->
-  <rect x="670" y="60" width="140" height="120" fill="#74b9ff" rx="12" stroke="#0984e3" stroke-width="2"/>
-  <text x="740" y="85" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="white" text-anchor="middle">
-    STEP 4
-  </text>
-  <text x="740" y="110" font-family="Arial, sans-serif" font-size="18" fill="white" text-anchor="middle">
-    💻
-  </text>
-  <text x="740" y="125" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle">
-    コード生成
-  </text>
-  <text x="740" y="140" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle">
-    React/Vue等
-  </text>
-  <text x="740" y="165" font-family="Arial, sans-serif" font-size="10" fill="#fff5f5" text-anchor="middle">
-    TypeScript対応
-  </text>
-  
-  <!-- Arrow 4 -->
-  <path d="M 820 150 L 850 150" stroke="#2d3436" stroke-width="3" fill="none" marker-end="url(#arrowhead)"/>
-  
-  <!-- Step 5: AI連携 -->
-  <rect x="860" y="60" width="140" height="120" fill="#55a3ff" rx="12" stroke="#2d3436" stroke-width="2"/>
-  <text x="930" y="85" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="white" text-anchor="middle">
-    STEP 5
-  </text>
-  <text x="930" y="110" font-family="Arial, sans-serif" font-size="18" fill="white" text-anchor="middle">
-    🤖
-  </text>
-  <text x="930" y="125" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle">
-    AI連携完了
-  </text>
-  <text x="930" y="140" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle">
-    Claude/Cursor
-  </text>
-  <text x="930" y="165" font-family="Arial, sans-serif" font-size="10" fill="#fff5f5" text-anchor="middle">
-    自動化完成
-  </text>
-  
-  <!-- Time indicators -->
-  <text x="170" y="250" font-family="Arial, sans-serif" font-size="12" fill="#6c5ce7" font-weight="bold" text-anchor="middle">
-    1分
-  </text>
-  <text x="360" y="250" font-family="Arial, sans-serif" font-size="12" fill="#e84393" font-weight="bold" text-anchor="middle">
-    30秒
-  </text>
-  <text x="550" y="250" font-family="Arial, sans-serif" font-size="12" fill="#e17055" font-weight="bold" text-anchor="middle">
-    1分
-  </text>
-  <text x="740" y="250" font-family="Arial, sans-serif" font-size="12" fill="#0984e3" font-weight="bold" text-anchor="middle">
-    2分
-  </text>
-  <text x="930" y="250" font-family="Arial, sans-serif" font-size="12" fill="#2d3436" font-weight="bold" text-anchor="middle">
-    30秒
-  </text>
-  
-  <!-- Total time -->
-  <rect x="400" y="265" width="280" height="25" fill="#2f3542" rx="12"/>
-  <text x="540" y="282" font-family="Arial, sans-serif" font-size="14" fill="#ffa502" font-weight="bold" text-anchor="middle">
-    ⏱️ 合計 5分でDev Mode以上の機能が完成！
-  </text>
-  
-  <!-- Comparison note -->
-  <text x="540" y="45" font-family="Arial, sans-serif" font-size="12" fill="#636e72" text-anchor="middle">
-    vs. Figma公式: 課金手続き + アカウント設定 + デスクトップ版限定 = 約30分 + 月額$12〜
-  </text>
-  
-  <!-- Arrow definitions -->
+<svg viewBox="0 0 1080 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">figma-mcp-freeの検証可能なworkflow</title>
+  <desc id="desc">backend選択、安全な接続、bounded inspection、starter code生成、verificationの5段階。</desc>
   <defs>
-    <marker id="arrowhead" markerWidth="12" markerHeight="8" refX="10" refY="4" orient="auto">
-      <polygon points="0 0, 12 4, 0 8" fill="#2d3436"/>
+    <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0,0 10,4 0,8" fill="#475569"/>
     </marker>
   </defs>
+  <rect width="1080" height="360" fill="#f8fafc"/>
+  <text x="540" y="42" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="29" font-weight="700" fill="#0f172a" text-anchor="middle">検証可能なFigma-to-Code Workflow</text>
+  <text x="540" y="68" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="14" fill="#475569" text-anchor="middle">5分保証なし、無制限API主張なし、隠れたFigma writeなし</text>
+
+  <path d="M205 187 L230 187" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <path d="M415 187 L440 187" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <path d="M625 187 L650 187" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <path d="M835 187 L860 187" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <g>
+    <rect x="20" y="105" width="185" height="164" rx="16" fill="#ffffff" stroke="#7c3aed" stroke-width="3"/>
+    <circle cx="112" cy="137" r="20" fill="#7c3aed"/>
+    <text x="112" y="144" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+    <text x="112" y="178" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="18" font-weight="700" fill="#4c1d95" text-anchor="middle">経路を選ぶ</text>
+    <text x="112" y="207" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="13" fill="#334155" text-anchor="middle">headlessはREST</text>
+    <text x="112" y="228" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="13" fill="#334155" text-anchor="middle">現在selectionはPlugin</text>
+    <text x="112" y="250" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="11" fill="#64748b" text-anchor="middle">最も狭いboundaryを使う</text>
+  </g>
+
+  <g>
+    <rect x="230" y="105" width="185" height="164" rx="16" fill="#ffffff" stroke="#2563eb" stroke-width="3"/>
+    <circle cx="322" cy="137" r="20" fill="#2563eb"/>
+    <text x="322" y="144" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+    <text x="322" y="178" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="18" font-weight="700" fill="#1d4ed8" text-anchor="middle">安全に接続</text>
+    <text x="322" y="207" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="13" fill="#334155" text-anchor="middle">PATまたはpairing token</text>
+    <text x="322" y="228" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="13" fill="#334155" text-anchor="middle">tool schemaの外へ置く</text>
+    <text x="322" y="250" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="11" fill="#64748b" text-anchor="middle">doctor / bridge status</text>
+  </g>
+
+  <g>
+    <rect x="440" y="105" width="185" height="164" rx="16" fill="#ffffff" stroke="#0f766e" stroke-width="3"/>
+    <circle cx="532" cy="137" r="20" fill="#0f766e"/>
+    <text x="532" y="144" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+    <text x="532" y="178" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="18" font-weight="700" fill="#0f766e" text-anchor="middle">小さくinspect</text>
+    <text x="532" y="207" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="13" fill="#334155" text-anchor="middle">depthとchildrenを制限</text>
+    <text x="532" y="228" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="13" fill="#334155" text-anchor="middle">複数nodeはbatch</text>
+    <text x="532" y="250" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="11" fill="#64748b" text-anchor="middle">full file乱用を避ける</text>
+  </g>
+
+  <g>
+    <rect x="650" y="105" width="185" height="164" rx="16" fill="#ffffff" stroke="#c2410c" stroke-width="3"/>
+    <circle cx="742" cy="137" r="20" fill="#c2410c"/>
+    <text x="742" y="144" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+    <text x="742" y="178" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="18" font-weight="700" fill="#9a3412" text-anchor="middle">starter code生成</text>
+    <text x="742" y="207" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="13" fill="#334155" text-anchor="middle">React / Vue / Svelte / HTML</text>
+    <text x="742" y="228" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="13" fill="#334155" text-anchor="middle">Design Tokenはoptional</text>
+    <text x="742" y="250" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="11" fill="#64748b" text-anchor="middle">pixel-perfect保証なし</text>
+  </g>
+
+  <g>
+    <rect x="860" y="105" width="185" height="164" rx="16" fill="#ffffff" stroke="#334155" stroke-width="3"/>
+    <circle cx="952" cy="137" r="20" fill="#334155"/>
+    <text x="952" y="144" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+    <text x="952" y="178" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="18" font-weight="700" fill="#0f172a" text-anchor="middle">verifyして適応</text>
+    <text x="952" y="207" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="13" fill="#334155" text-anchor="middle">accessibility / responsive</text>
+    <text x="952" y="228" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="13" fill="#334155" text-anchor="middle">lint / test / build</text>
+    <text x="952" y="250" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="11" fill="#64748b" text-anchor="middle">human reviewが最終gate</text>
+  </g>
+
+  <rect x="150" y="300" width="780" height="38" rx="19" fill="#0f172a"/>
+  <text x="540" y="325" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">read-only default • credentialはmodel inputの外 • private outputはuser管理</text>
 </svg>
