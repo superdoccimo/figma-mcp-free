@@ -1,6 +1,7 @@
 # figma-mcp-free
 
 ![CI](https://github.com/superdoccimo/figma-mcp-free/actions/workflows/ci.yml/badge.svg)
+[![CodeQL](https://github.com/superdoccimo/figma-mcp-free/actions/workflows/codeql.yml/badge.svg)](https://github.com/superdoccimo/figma-mcp-free/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
@@ -46,7 +47,8 @@ See Figma's official [REST API rate-limit documentation](https://developers.figm
 - React, Vue, Svelte, and HTML starter generation.
 - Protected local PAT storage with atomic replacement and owner-only POSIX permissions.
 - Read-only fork-network auditing and contribution provenance.
-- CI on Node.js 18, 20, and 22 with build, typecheck, tests, smoke tests, secret checks, package checks, and fork-portability checks.
+- CI on Node.js 18, 20, and 22 with build, typecheck, tests, smoke tests, secret checks, plugin-integrity checks, package checks, and fork-portability checks.
+- CodeQL analysis plus pull-request dependency review for newly introduced high-severity vulnerabilities.
 
 ## Install From Source
 
@@ -190,6 +192,7 @@ Example configurations:
 
 - [`examples/codex-config/mcp.json`](examples/codex-config/mcp.json)
 - [`examples/cursor-config/mcp.json`](examples/cursor-config/mcp.json)
+- [`examples/local-plugin-config/mcp.json`](examples/local-plugin-config/mcp.json)
 
 Configure either or both backends in the MCP server environment:
 
@@ -306,6 +309,7 @@ Further reading:
 - [Quickstart](docs/quickstart.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Fork support](docs/forks.md)
+- [Recommended repository settings](docs/repository-settings.md)
 - [Roadmap](ROADMAP.md)
 - [Japanese guide](jp/README.md)
 - [Changelog](CHANGELOG.md)
