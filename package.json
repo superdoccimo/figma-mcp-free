@@ -34,5 +34,16 @@
   "bugs": {
     "url": "https://github.com/superdoccimo/figma-mcp-free/issues"
   },
-  "homepage": "https://github.com/superdoccimo/figma-mcp-free#readme"
+  "homepage": "https://github.com/superdoccimo/figma-mcp-free#readme",
+  "pnpm": {
+    "overrides": {
+      "@hono/node-server": "1.19.15",
+      "body-parser": "2.3.0",
+      "esbuild": "0.28.1",
+      "fast-uri": "3.1.6",
+      "hono": "4.13.5",
+      "ip-address": "10.7.0",
+      "qs": "6.16.0"
+    }
+  }
 }
