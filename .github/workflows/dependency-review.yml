@@ -1,0 +1,27 @@
+name: Dependency review
+
+on:
+  pull_request:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-review-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Review dependency changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Reject newly introduced high-severity vulnerabilities
+        uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
+          show-patched-versions: true
