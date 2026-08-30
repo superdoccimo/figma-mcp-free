@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git apply --index --whitespace=error-all /tmp/figma-productization.patch
+          git apply --index --whitespace=fix /tmp/figma-productization.patch
           git rm -r .github/productization-patch
           git rm .github/workflows/apply-productization-once.yml
 
