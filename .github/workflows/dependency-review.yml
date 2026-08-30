@@ -51,7 +51,7 @@ jobs:
         if: steps.dependency-graph.outputs.supported == 'true'
         uses: actions/dependency-review-action@v4
         with:
-          fail-on-severity: high
+          fail-on-severity: low
 
       - name: Checkout for lockfile audit fallback
         if: steps.dependency-graph.outputs.supported != 'true'
@@ -73,7 +73,7 @@ jobs:
 
       - name: Audit committed dependencies
         if: steps.dependency-graph.outputs.supported != 'true'
-        run: pnpm audit --audit-level high
+        run: pnpm audit --audit-level low
 
       - name: Explain fallback
         if: steps.dependency-graph.outputs.supported != 'true'
@@ -81,6 +81,6 @@ jobs:
           {
             echo '### Dependency review fallback'
             echo
-            echo 'GitHub Dependency graph is unavailable, so this run used `pnpm audit --audit-level high` against the committed lockfile.'
+            echo 'GitHub Dependency graph is unavailable, so this run used `pnpm audit --audit-level low` against the committed lockfile.'
             echo 'Enable Dependency graph in repository security settings to restore change-aware dependency review.'
           } >> "${GITHUB_STEP_SUMMARY}"
