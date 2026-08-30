@@ -20,8 +20,9 @@ concurrency:
 
 jobs:
   audit:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -31,11 +32,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 22.x
 
       - name: Audit the fork network
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_API_URL: ${{ github.api_url }}
         run: >-
           node tools/audit-forks.mjs
           --repo "${{ github.repository }}"
@@ -44,5 +46,22 @@ jobs:
           ${{ inputs.fail_on_ahead && '--fail-on-ahead' || '' }}
 
       - name: Publish workflow summary
-        if: always() && hashFiles('fork-audit.md') != ''
-        run: cat fork-audit.md >> "$GITHUB_STEP_SUMMARY"
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f fork-audit.md ]]; then
+            cat fork-audit.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Fork audit did not produce a report. Inspect the failed audit step.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload fork audit reports
+        if: always() && hashFiles('fork-audit.json', 'fork-audit.md') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: fork-intelligence-${{ github.run_id }}
+          path: |
+            fork-audit.json
+            fork-audit.md
+          if-no-files-found: error
+          retention-days: 30

@@ -22,7 +22,7 @@
     "check:fork": "node tools/check-fork-compat.mjs",
     "pack:check": "node tools/check-packages.mjs",
     "fork:audit": "node tools/audit-forks.mjs",
-    "fork:audit:json": "node tools/audit-forks.mjs --json fork-audit.json --markdown fork-audit.md",
+    "fork:audit:json": "node tools/audit-forks.mjs --format json --no-files",
     "check": "pnpm run build && pnpm run typecheck && pnpm run test && pnpm run smoke && pnpm run check:secrets && pnpm run check:portability && pnpm run check:fork && pnpm run pack:check",
     "cli": "pnpm --filter figma-mcp-free dev",
     "mcp": "pnpm --filter @figma-mcp-free/server dev"
@@ -34,5 +34,16 @@
   "bugs": {
     "url": "https://github.com/superdoccimo/figma-mcp-free/issues"
   },
-  "homepage": "https://github.com/superdoccimo/figma-mcp-free#readme"
+  "homepage": "https://github.com/superdoccimo/figma-mcp-free#readme",
+  "pnpm": {
+    "overrides": {
+      "@hono/node-server": "1.19.15",
+      "body-parser": "2.3.0",
+      "esbuild": "0.28.1",
+      "fast-uri": "3.1.6",
+      "hono": "4.13.5",
+      "ip-address": "10.7.0",
+      "qs": "6.16.0"
+    }
+  }
 }
