@@ -1,0 +1,475 @@
+name: Verify and merge productization once
+
+on:
+  push:
+    branches:
+      - feat/productization-v1-20260830
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: productization-merge-once
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout productization branch
+        uses: actions/checkout@v7
+        with:
+          ref: feat/productization-v1-20260830
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Normalize final source tree
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          required = [
+              "distribution/launcher.mjs",
+              "distribution/mcp-entry.mjs",
+              "distribution/plugin-cli.mjs",
+              "tools/build-distribution.mjs",
+              "tools/pack-distribution.mjs",
+              "tools/smoke-distribution.mjs",
+              "tools/desktop-smoke-evidence.mjs",
+              "docs/distribution.md",
+              "docs/desktop-smoke-test.md",
+              "release-evidence/README.md",
+              ".github/workflows/release-candidate.yml",
+          ]
+          missing = [path for path in required if not Path(path).is_file()]
+          if missing:
+              raise SystemExit(f"Missing productization files: {missing}")
+
+          package_path = Path("package.json")
+          package = json.loads(package_path.read_text(encoding="utf-8"))
+          scripts = package.setdefault("scripts", {})
+          scripts.update({
+              "dist:stage": "node tools/build-distribution.mjs",
+              "dist:pack": "node tools/pack-distribution.mjs",
+              "dist:smoke": "node tools/smoke-distribution.mjs",
+              "desktop:evidence:template": "node tools/desktop-smoke-evidence.mjs template",
+              "desktop:evidence:verify": "node tools/desktop-smoke-evidence.mjs verify",
+          })
+          scripts["check"] = "pnpm run build && pnpm run typecheck && pnpm run test && pnpm run smoke && pnpm run check:secrets && pnpm run check:portability && pnpm run check:fork && pnpm run check:plugin && pnpm run pack:check && pnpm run dist:stage"
+          package_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
+
+          build_path = Path("tools/build-distribution.mjs")
+          build = build_path.read_text(encoding="utf-8")
+          build = build.replace(
+              'await copyIfPresent(join(cliRoot, "README.md"), join(packageDir, "README.md"));',
+              'await copyIfPresent(join(root, "README.md"), join(packageDir, "README.md"));'
+          )
+          build_path.write_text(build, encoding="utf-8")
+
+          smoke_path = Path("tools/smoke-distribution.mjs")
+          smoke = smoke_path.read_text(encoding="utf-8")
+          if "readyWindowPassed" not in smoke:
+              start = smoke.index("async function assertMcpStarts")
+              end = smoke.index("export async function smokeDistribution", start)
+              fixed = '''async function assertMcpStarts(launcher, cwd) {
+                await new Promise((resolvePromise, reject) => {
+                  const child = spawn(process.execPath, [launcher, "mcp"], {
+                    cwd,
+                    env: { ...process.env, FIGMA_TOKEN: "" },
+                    stdio: ["pipe", "pipe", "pipe"],
+                    windowsHide: true
+                  });
+                  let stderr = "";
+                  let readyWindowPassed = false;
+                  let finished = false;
+                  let startTimer;
+                  let killTimer;
+                  child.stderr.setEncoding("utf8");
+                  child.stderr.on("data", (chunk) => { stderr += chunk; });
+
+                  const finish = (error) => {
+                    if (finished) return;
+                    finished = true;
+                    clearTimeout(startTimer);
+                    clearTimeout(killTimer);
+                    if (error) reject(error);
+                    else resolvePromise();
+                  };
+
+                  child.once("error", (error) => finish(error));
+                  child.once("exit", (code) => {
+                    if (finished) return;
+                    if (readyWindowPassed) finish();
+                    else finish(new Error(`MCP process exited before the smoke window with code ${code}.\\n${stderr}`));
+                  });
+                  child.once("close", () => {
+                    if (!finished && readyWindowPassed) finish();
+                  });
+
+                  startTimer = setTimeout(() => {
+                    readyWindowPassed = true;
+                    try { child.kill("SIGTERM"); } catch { child.kill(); }
+                  }, 750);
+                  killTimer = setTimeout(() => {
+                    try { child.kill("SIGKILL"); } catch { child.kill(); }
+                    finish();
+                  }, 2500);
+                });
+              }
+
+              '''.replace("              ", "")
+              smoke = smoke[:start] + fixed + smoke[end:]
+              smoke_path.write_text(smoke, encoding="utf-8")
+
+          root_path = Path("README.md")
+          root = root_path.read_text(encoding="utf-8")
+          if "## Build a Standalone Release Candidate" not in root:
+              marker = "The offline command does not contact Figma."
+              addition = '''The offline command does not contact Figma.
+
+              ## Build a Standalone Release Candidate
+
+              The npm package is not publicly released yet. Maintainers and reviewers can build the exact standalone candidate locally:
+
+              ```bash
+              pnpm check
+              pnpm dist:pack -- --output ./release-artifacts
+              pnpm dist:smoke
+              ```
+
+              The smoke test installs only the generated tarball into an empty temporary project, then exercises the CLI, local bridge command, MCP startup, offline generation, and installed Plugin-manifest workflow. See [Standalone npm distribution](docs/distribution.md) and [Figma Desktop smoke test](docs/desktop-smoke-test.md).
+'''.replace("              ", "")
+              if marker not in root:
+                  raise SystemExit("Root README insertion marker was not found")
+              root_path.write_text(root.replace(marker, addition, 1), encoding="utf-8")
+
+          jp_path = Path("jp/README.md")
+          jp = jp_path.read_text(encoding="utf-8")
+          if "## 公開前のstandalone packageを検証する" not in jp:
+              marker = "これはFigmaへ接続しません。clone、依存関係、build、generatorを安全に確認する最短ルートです。"
+              addition = '''これはFigmaへ接続しません。clone、依存関係、build、generatorを安全に確認する最短ルートです。
+
+              ## 公開前のstandalone packageを検証する
+
+              npm packageはまだ一般公開していません。maintainerとreviewerは、公開候補を1つのtarballとして作成し、空の環境へclean installできます。
+
+              ```bash
+              pnpm check
+              pnpm dist:pack -- --output ./release-artifacts
+              pnpm dist:smoke
+              ```
+
+              `dist:smoke`は生成したtarballだけを一時projectへinstallし、CLI、bridge command、MCP起動、offline生成、installed packageからのPlugin manifest生成を確認します。詳細は[standalone npm distribution](../docs/distribution.md)と[Figma Desktop smoke test](../docs/desktop-smoke-test.md)を参照してください。
+'''.replace("              ", "")
+              if marker not in jp:
+                  raise SystemExit("Japanese README insertion marker was not found")
+              jp_path.write_text(jp.replace(marker, addition, 1), encoding="utf-8")
+
+          docs_index = '''# Documentation Index
+
+          Start here:
+
+          - [Quickstart](quickstart.md)
+          - [Standalone npm distribution](distribution.md)
+          - [Local Figma Plugin bridge](local-plugin-bridge.md)
+          - [Figma Desktop smoke test](desktop-smoke-test.md)
+          - [Troubleshooting](troubleshooting.md)
+          - [Architecture](architecture.md)
+          - [Forking and upstream contribution](forking.md)
+          - [Release policy](releasing.md)
+          - [Recommended GitHub repository settings](repository-settings.md)
+          - [Why this exists](why-this-exists.md)
+          - [Demo runbook](demo/runbook.md)
+          - [Launch and release checklist](launch-checklist.md)
+          - [Project roadmap](../ROADMAP.md)
+          - [Governance](../GOVERNANCE.md)
+          - [Support](../SUPPORT.md)
+          - [Security](../SECURITY.md)
+          - [Japanese README](../jp/README.md)
+
+          ## Current capability statement
+
+          Two explicit read paths are implemented:
+
+          1. A quota-aware Figma REST backend for CLI and MCP workflows, selected-layer inspection, design-token extraction, starter code generation, node batching, request coalescing, bounded memory caching, request budgets, and structured rate-limit diagnostics.
+          2. An authenticated, loopback-only Figma development-plugin bridge for explicit current-selection capture without a PAT or REST request.
+
+          The local bridge remains read-only, memory-only, bounded, and opt-in. It does not silently replace REST calls, expose its token to model-visible schemas, or add Figma write capability.
+
+          A single-package npm release candidate can be staged and clean-installed locally, but the package is not publicly advertised as released until registry verification and a real Figma Desktop evidence gate pass.
+
+          ## Documentation rule
+
+          Documentation must describe implemented and tested behavior. Package installation commands, client compatibility, Figma plan allowances, Plugin capabilities, platform verification, and write operations must not be advertised before they are verifiable.
+          '''.replace("          ", "")
+          Path("docs/README.md").write_text(docs_index, encoding="utf-8")
+
+      - name: Install final CI workflow
+        shell: bash
+        run: |
+          cat > .github/workflows/ci.yml <<'YAML'
+          name: CI
+
+          on:
+            push:
+              branches: [main, master]
+            pull_request:
+              branches: [main, master]
+
+          permissions:
+            contents: read
+
+          concurrency:
+            group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+            cancel-in-progress: true
+
+          jobs:
+            verify:
+              name: verify (${{ matrix.node-version }})
+              runs-on: ubuntu-24.04
+              timeout-minutes: 25
+              strategy:
+                fail-fast: false
+                matrix:
+                  node-version: [18.x, 20.x, 22.x]
+
+              steps:
+                - name: Checkout
+                  uses: actions/checkout@v7
+                  with:
+                    fetch-depth: 0
+                    persist-credentials: false
+
+                - name: Setup pnpm
+                  uses: pnpm/action-setup@v6
+                  with:
+                    version: 9.15.9
+
+                - name: Setup Node.js ${{ matrix.node-version }}
+                  uses: actions/setup-node@v7
+                  with:
+                    node-version: ${{ matrix.node-version }}
+                    cache: pnpm
+                    cache-dependency-path: pnpm-lock.yaml
+
+                - name: Install dependencies
+                  run: pnpm install --frozen-lockfile
+
+                - name: Build
+                  run: pnpm run build
+
+                - name: Typecheck
+                  run: pnpm run typecheck
+
+                - name: Unit and fixture tests
+                  run: pnpm run test
+
+                - name: Offline smoke tests
+                  run: pnpm run smoke
+
+                - name: Check secret patterns
+                  run: pnpm run check:secrets
+
+                - name: Check general portability
+                  run: pnpm run check:portability
+
+                - name: Check structured fork policy
+                  run: pnpm run check:fork
+
+                - name: Check local plugin boundary
+                  run: pnpm run check:plugin
+
+                - name: Check package contents
+                  run: pnpm run pack:check
+
+                - name: Stage standalone package
+                  run: pnpm run dist:stage
+
+                - name: Clean-install standalone npm candidate
+                  run: pnpm run dist:smoke
+
+                - name: Check pull request whitespace
+                  if: github.event_name == 'pull_request'
+                  run: git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+
+            cross-platform:
+              name: verify (${{ matrix.os }}, 22.x)
+              runs-on: ${{ matrix.os }}
+              timeout-minutes: 30
+              strategy:
+                fail-fast: false
+                matrix:
+                  os: [windows-latest, macos-latest]
+
+              steps:
+                - name: Checkout
+                  uses: actions/checkout@v7
+                  with:
+                    fetch-depth: 0
+                    persist-credentials: false
+
+                - name: Setup pnpm
+                  uses: pnpm/action-setup@v6
+                  with:
+                    version: 9.15.9
+
+                - name: Setup Node.js 22.x
+                  uses: actions/setup-node@v7
+                  with:
+                    node-version: 22.x
+                    cache: pnpm
+                    cache-dependency-path: pnpm-lock.yaml
+
+                - name: Install dependencies
+                  run: pnpm install --frozen-lockfile
+
+                - name: Run complete repository checks
+                  run: pnpm check
+
+                - name: Clean-install standalone npm candidate
+                  run: pnpm run dist:smoke
+          YAML
+
+      - name: Remove one-shot workflows
+        run: |
+          rm -f .github/workflows/productization-finalize-once.yml
+          rm -f .github/workflows/productization-merge-once.yml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run complete source gate
+        run: pnpm check
+
+      - name: Clean-install standalone candidate
+        run: pnpm dist:smoke
+
+      - name: Commit final tree
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m 'build: finalize single-package productization'
+          fi
+          git push origin HEAD:feat/productization-v1-20260830
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare or update pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: feat/productization-v1-20260830
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/pr-body.md <<'BODY'
+          ## Purpose
+
+          Turn the existing multi-package development workspace into one clean-installable `figma-mcp-free` npm release candidate without publishing anything prematurely.
+
+          ## What changes
+
+          - Stage one public package while bundling the five internal runtime packages.
+          - Keep third-party dependencies visible to npm and remove every `workspace:` protocol from the staged manifests.
+          - Provide one launcher for REST/offline CLI, local bridge, MCP STDIO, and installed Plugin setup.
+          - Generate and verify development Plugin files from the installed package, including custom loopback ports.
+          - Pack a tarball with a SHA-256 release manifest.
+          - Install that tarball into an empty consumer project and exercise CLI, MCP startup, offline generation, and Plugin preparation.
+          - Run the clean-install proof on Linux Node.js 18/20/22, Windows Node.js 22, and macOS Node.js 22.
+          - Add machine-checked, credential-free Figma Desktop evidence and a non-publishing release-candidate workflow.
+
+          ## Deliberate boundary
+
+          This PR does not publish to npm, create a GitHub Release, submit a Figma Community Plugin, enable repository settings outside Git, or claim that Figma Desktop was automated in CI. Public release remains blocked until a real Desktop evidence file matches the candidate tarball digest and a human approves publication.
+          BODY
+
+          PR_NUMBER="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --base main --state open --json number --jq '.[0].number // empty')"
+          if [[ -z "$PR_NUMBER" ]]; then
+            PR_URL="$(gh pr create --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --base main --title 'build: produce one clean-installable npm release candidate' --body-file /tmp/pr-body.md)"
+            PR_NUMBER="${PR_URL##*/}"
+          else
+            gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --title 'build: produce one clean-installable npm release candidate' --body-file /tmp/pr-body.md
+            if [[ "$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" == "true" ]]; then
+              gh pr ready "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
+            fi
+          fi
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for exact-head GitHub checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ steps.commit.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(CI CodeQL "Dependency review")
+          for attempt in $(seq 1 180); do
+            runs="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${HEAD_SHA}&per_page=100")"
+            failed=0
+            complete=0
+            for name in "${required[@]}"; do
+              row="$(jq -c --arg name "$name" '[.workflow_runs[] | select(.name == $name)] | sort_by(.created_at) | last // {}' <<<"$runs")"
+              status="$(jq -r '.status // "missing"' <<<"$row")"
+              conclusion="$(jq -r '.conclusion // ""' <<<"$row")"
+              if [[ "$status" == "completed" && "$conclusion" == "success" ]]; then
+                complete=$((complete + 1))
+              elif [[ "$status" == "completed" ]]; then
+                echo "$name failed with conclusion $conclusion" >&2
+                failed=1
+              fi
+            done
+            if [[ "$failed" -eq 1 ]]; then exit 1; fi
+            if [[ "$complete" -eq 3 ]]; then exit 0; fi
+            sleep 10
+          done
+          echo 'Timed out waiting for CI, CodeQL, and Dependency review.' >&2
+          exit 1
+
+      - name: Squash merge exact verified head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.commit.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --squash \
+            --match-head-commit "$HEAD_SHA" \
+            --subject 'build: produce one clean-installable npm release candidate' \
+            --body 'Stage and clean-install one standalone package across Linux, Windows, and macOS; add installed Plugin preparation and machine-checked Desktop evidence; keep publication explicitly blocked pending real Desktop proof and human approval.'
+
+      - name: Verify merge and open PR count
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          merged="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.merged_at // empty')"
+          [[ -n "$merged" ]]
+          open_count="$(gh api "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" --jq 'length')"
+          [[ "$open_count" == "0" ]]
+          echo "Merged PR #${PR_NUMBER} at ${merged}; open PR count is zero."
