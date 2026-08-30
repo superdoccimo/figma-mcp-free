@@ -42,6 +42,15 @@ jobs:
         run: |
           set -euo pipefail
           git apply --index --whitespace=fix /tmp/figma-productization.patch
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/desktop-smoke.test.mjs')
+          text = path.read_text(encoding='utf-8')
+          old = 'pollIntervalMs: 25'
+          if text.count(old) != 1:
+              raise SystemExit('Expected exactly one Desktop smoke test poll interval to update.')
+          path.write_text(text.replace(old, 'pollIntervalMs: 50'), encoding='utf-8')
+          PY
           git rm -r .github/productization-patch
           git rm .github/workflows/apply-productization-once.yml
 
