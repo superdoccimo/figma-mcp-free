@@ -59,5 +59,8 @@ jobs:
       - name: Check local plugin integrity
         run: pnpm run check:plugin
 
+      - name: Check documentation claims
+        run: pnpm run check:docs
+
       - name: Check package contents
         run: pnpm run pack:check
