@@ -1,36 +1,99 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+MODE="${MODE:-offline}"
+OUT_DIR="${OUT_DIR:-demo-out}"
 
 if ! command -v pnpm >/dev/null 2>&1; then
-  echo "pnpm not found. Please install pnpm first." >&2
+  echo "pnpm not found. Install pnpm 9 first." >&2
   exit 1
 fi
 
-if [[ -z "${FIGMA_TOKEN:-}" || -z "${FILE_ID:-}" || -z "${NODE_ID:-}" ]]; then
-  echo "Usage: FIGMA_TOKEN=... FILE_ID=... NODE_ID=... ./scripts/demo.sh" >&2
-  exit 1
+if [[ "${SKIP_INSTALL:-0}" != "1" ]]; then
+  echo "[setup] Installing locked dependencies"
+  pnpm install --frozen-lockfile
 fi
 
-echo "[1/6] Install & build"
-pnpm install
+echo "[setup] Building workspace"
 pnpm -r build
 
-echo "[2/6] Save token"
-pnpm --filter figma-mcp-free dev -- init --token "$FIGMA_TOKEN" >/dev/null
-pnpm --filter figma-mcp-free dev -- config get token
+rm -rf "$OUT_DIR"
+mkdir -p "$OUT_DIR"
 
-echo "[3/6] List components (filtered example)"
-pnpm --filter figma-mcp-free dev -- components "$FILE_ID" --query Button --limit 5 || true
+case "$MODE" in
+  offline)
+    echo "[offline] Generating from public local fixtures"
+    pnpm --filter figma-mcp-free dev -- \
+      generate-from-json ./examples/sample-node.json \
+      --framework react \
+      --use-tokens ./examples/sample-tokens.json \
+      > "$OUT_DIR/sample-react.tsx"
+    cp ./examples/sample-tokens.json "$OUT_DIR/sample-tokens.json"
+    ;;
 
-mkdir -p demo-out
+  rest)
+    if [[ -z "${FIGMA_TOKEN:-}" || -z "${FIGMA_URL:-}" ]]; then
+      echo "REST demo requires FIGMA_TOKEN and a /file or /design FIGMA_URL with node-id." >&2
+      echo 'Example: MODE=rest FIGMA_TOKEN=... FIGMA_URL="https://www.figma.com/design/...?..." ./scripts/demo.sh' >&2
+      exit 1
+    fi
 
-echo "[4/6] Generate (no tokens)"
-pnpm --filter figma-mcp-free dev -- generate "$FILE_ID" "$NODE_ID" --framework react > demo-out/out-no-tokens.jsx
+    echo "[rest] Running safe diagnostics"
+    pnpm --filter figma-mcp-free dev -- doctor "$FIGMA_URL" --json > "$OUT_DIR/doctor.json"
 
-echo "[5/6] Export tokens"
-pnpm --filter figma-mcp-free dev -- export-tokens "$FILE_ID" > demo-out/tokens.json
+    echo "[rest] Capturing bounded implementation context"
+    pnpm --filter figma-mcp-free dev -- \
+      inspect-selection "$FIGMA_URL" \
+      --depth 2 \
+      --max-children 20 \
+      > "$OUT_DIR/selection-context.json"
 
-echo "[6/6] Generate (with tokens)"
-pnpm --filter figma-mcp-free dev -- generate "$FILE_ID" "$NODE_ID" --framework react --use-tokens demo-out/tokens.json > demo-out/out-with-tokens.jsx
+    echo "[rest] Exporting tokens and generating starter code"
+    pnpm --filter figma-mcp-free dev -- export-tokens "$FIGMA_URL" > "$OUT_DIR/tokens.json"
+    pnpm --filter figma-mcp-free dev -- \
+      generate "$FIGMA_URL" \
+      --framework react \
+      --use-tokens "$OUT_DIR/tokens.json" \
+      > "$OUT_DIR/generated-react.tsx"
+    ;;
 
-echo "Done. See demo-out/ for results."
+  plugin)
+    if [[ -z "${FIGMA_PLUGIN_BRIDGE_TOKEN:-}" ]]; then
+      echo "Plugin demo requires FIGMA_PLUGIN_BRIDGE_TOKEN and a running bridge with a captured selection." >&2
+      echo 'Example: MODE=plugin FIGMA_PLUGIN_BRIDGE_TOKEN=... ./scripts/demo.sh' >&2
+      exit 1
+    fi
+
+    export FIGMA_PLUGIN_BRIDGE_URL="${FIGMA_PLUGIN_BRIDGE_URL:-http://127.0.0.1:3845}"
+
+    echo "[plugin] Checking bridge and reading the explicit snapshot"
+    node packages/cli/dist/bridge-cli.js status > "$OUT_DIR/bridge-status.json"
+    node packages/cli/dist/bridge-cli.js current > "$OUT_DIR/plugin-snapshot.json"
+    node packages/cli/dist/bridge-cli.js \
+      inspect \
+      --depth 2 \
+      --max-children 20 \
+      > "$OUT_DIR/selection-context.json"
+    node packages/cli/dist/bridge-cli.js \
+      generate \
+      --framework react \
+      > "$OUT_DIR/generated-react.tsx"
+    ;;
+
+  *)
+    echo "Unknown MODE: $MODE. Use offline, rest, or plugin." >&2
+    exit 1
+    ;;
+esac
+
+cat <<EOF
+Demo complete: $OUT_DIR
+Mode: $MODE
+
+The output directory is created with the current process umask and may contain private design text in REST or Plugin mode.
+Review it locally and do not commit private output.
+EOF
