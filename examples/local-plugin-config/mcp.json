@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "figma-mcp-free": {
+      "transport": "stdio",
+      "command": "node",
+      "args": [
+        "/ABSOLUTE/PATH/TO/figma-mcp-free/packages/mcp-server/dist/index.js"
+      ],
+      "env": {
+        "FIGMA_PLUGIN_BRIDGE_URL": "http://127.0.0.1:3845",
+        "FIGMA_PLUGIN_BRIDGE_TOKEN": "REPLACE_WITH_THE_PAIRING_TOKEN"
+      }
+    }
+  }
+}
