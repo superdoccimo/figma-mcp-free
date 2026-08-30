@@ -22,6 +22,9 @@ updates:
           - minor
           - patch
     ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
       - dependency-name: commander
         update-types:
           - version-update:semver-major
