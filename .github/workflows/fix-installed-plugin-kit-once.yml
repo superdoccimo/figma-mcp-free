@@ -1,0 +1,80 @@
+name: Fix installed Plugin kit once
+
+on:
+  push:
+    branches:
+      - feat/productization-v1-20260830
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-installed-plugin-kit
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feat/productization-v1-20260830
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+
+      - name: Copy the complete Plugin kit next to the generated manifest
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('packages/cli/src/plugin-cli.ts')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              'import { mkdirSync, readFileSync, writeFileSync } from "node:fs";',
+              'import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";'
+          )
+          old = '''    const output = resolve(options.out);
+              mkdirSync(dirname(output), { recursive: true });
+              writeFileSync(output, `${JSON.stringify(template, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+              console.log(`Created ${output} for loopback bridge port ${port}.`);'''.replace('              ', '')
+          new = '''    const output = resolve(options.out);
+              const outputDirectory = dirname(output);
+              mkdirSync(outputDirectory, { recursive: true });
+              writeFileSync(output, `${JSON.stringify(template, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+              const pluginDirectory = new URL("../plugin/", import.meta.url);
+              for (const asset of ["code.js", "ui.html"]) {
+                copyFileSync(new URL(asset, pluginDirectory), resolve(outputDirectory, asset));
+              }
+              console.log(`Created a complete Figma development Plugin kit in ${outputDirectory} for loopback bridge port ${port}.`);'''.replace('              ', '')
+          if old not in text:
+              raise SystemExit('Expected Plugin CLI output block was not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          smoke = Path('tools/smoke-packed-install.mjs')
+          smoke_text = smoke.read_text(encoding='utf-8')
+          needle = 'assert.equal(pluginManifest.id, "123456789");'
+          replacement = '''assert.equal(pluginManifest.id, "123456789");
+              assert.equal(existsSync(join(dirname(generatedManifest), "code.js")), true);
+              assert.equal(existsSync(join(dirname(generatedManifest), "ui.html")), true);'''
+          if needle not in smoke_text:
+              raise SystemExit('Expected packed Plugin smoke assertion was not found')
+          smoke.write_text(smoke_text.replace(needle, replacement, 1), encoding='utf-8')
+
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm release:check
+      - run: rm -f .github/workflows/fix-installed-plugin-kit-once.yml
+      - name: Commit verified Plugin kit fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: generate a complete installed Figma Plugin kit'
+          git push origin HEAD:feat/productization-v1-20260830

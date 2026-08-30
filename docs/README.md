@@ -3,7 +3,9 @@
 Start here:
 
 - [Quickstart](quickstart.md)
+- [Standalone npm distribution](distribution.md)
 - [Local Figma Plugin bridge](local-plugin-bridge.md)
+- [Figma Desktop smoke test](desktop-smoke-test.md)
 - [Troubleshooting](troubleshooting.md)
 - [Architecture](architecture.md)
 - [Forking and upstream contribution](forking.md)
@@ -27,8 +29,8 @@ Two explicit read paths are implemented:
 
 The local bridge remains read-only, memory-only, bounded, and opt-in. It does not silently replace REST calls, expose its token to model-visible schemas, or add Figma write capability.
 
-The Node.js protocol and static Plugin boundary are covered by automated Linux, Windows, and macOS checks. A real Figma Desktop smoke test is still required before calling a release candidate release-ready.
+A single-package npm release candidate can be staged and clean-installed locally, but the package is not publicly advertised as released until registry verification and a real Figma Desktop evidence gate pass.
 
 ## Documentation rule
 
-Documentation must describe implemented and tested behavior. Package installation commands, client compatibility, Figma plan allowances, plugin capabilities, and write operations must not be advertised before they are verifiable.
+Documentation must describe implemented and tested behavior. Package installation commands, client compatibility, Figma plan allowances, Plugin capabilities, platform verification, and write operations must not be advertised before they are verifiable.

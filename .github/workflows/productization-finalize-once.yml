@@ -1,0 +1,168 @@
+name: Finalize productization once
+
+on:
+  push:
+    branches:
+      - feat/productization-v1-20260830
+
+permissions:
+  contents: write
+
+concurrency:
+  group: productization-finalize-once
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout productization branch
+        uses: actions/checkout@v7
+        with:
+          ref: feat/productization-v1-20260830
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Apply final deterministic edits
+        shell: python
+        run: |
+          from pathlib import Path
+
+          smoke_path = Path("tools/smoke-distribution.mjs")
+          smoke = smoke_path.read_text(encoding="utf-8")
+          start = smoke.index("async function assertMcpStarts")
+          end = smoke.index("export async function smokeDistribution", start)
+          fixed = '''async function assertMcpStarts(launcher, cwd) {
+            await new Promise((resolvePromise, reject) => {
+              const child = spawn(process.execPath, [launcher, "mcp"], {
+                cwd,
+                env: { ...process.env, FIGMA_TOKEN: "" },
+                stdio: ["pipe", "pipe", "pipe"],
+                windowsHide: true
+              });
+              let stderr = "";
+              let readyWindowPassed = false;
+              let finished = false;
+              let startTimer;
+              let killTimer;
+              child.stderr.setEncoding("utf8");
+              child.stderr.on("data", (chunk) => { stderr += chunk; });
+
+              const finish = (error) => {
+                if (finished) return;
+                finished = true;
+                clearTimeout(startTimer);
+                clearTimeout(killTimer);
+                if (error) reject(error);
+                else resolvePromise();
+              };
+
+              child.once("error", (error) => finish(error));
+              child.once("exit", (code) => {
+                if (finished) return;
+                if (readyWindowPassed) finish();
+                else finish(new Error(`MCP process exited before the smoke window with code ${code}.\\n${stderr}`));
+              });
+              child.once("close", () => {
+                if (!finished && readyWindowPassed) finish();
+              });
+
+              startTimer = setTimeout(() => {
+                readyWindowPassed = true;
+                try { child.kill("SIGTERM"); } catch { child.kill(); }
+              }, 750);
+              killTimer = setTimeout(() => {
+                try { child.kill("SIGKILL"); } catch { child.kill(); }
+                finish();
+              }, 2500);
+            });
+          }
+
+          '''.replace("          ", "")
+          smoke_path.write_text(smoke[:start] + fixed + smoke[end:], encoding="utf-8")
+
+          build_path = Path("tools/build-distribution.mjs")
+          build = build_path.read_text(encoding="utf-8")
+          old_readme = 'await copyIfPresent(join(cliRoot, "README.md"), join(packageDir, "README.md"));'
+          new_readme = 'await copyIfPresent(join(root, "README.md"), join(packageDir, "README.md"));'
+          if old_readme not in build:
+              raise SystemExit("Distribution README copy marker was not found")
+          build_path.write_text(build.replace(old_readme, new_readme, 1), encoding="utf-8")
+
+          readme_path = Path("README.md")
+          readme = readme_path.read_text(encoding="utf-8")
+          marker = "The offline command does not contact Figma."
+          addition = '''The offline command does not contact Figma.
+
+          ## Build a Standalone Release Candidate
+
+          The npm package is not publicly released yet. Maintainers and reviewers can build the exact standalone candidate locally:
+
+          ```bash
+          pnpm check
+          pnpm dist:pack -- --output ./release-artifacts
+          pnpm dist:smoke
+          ```
+
+          The smoke test installs only the generated tarball into an empty temporary project, then exercises the CLI, local bridge command, MCP startup, offline generation, and installed Plugin-manifest workflow. See [Standalone npm distribution](docs/distribution.md) and [Figma Desktop smoke test](docs/desktop-smoke-test.md).
+'''.replace("          ", "")
+          if marker not in readme:
+              raise SystemExit("Root README insertion marker was not found")
+          readme_path.write_text(readme.replace(marker, addition, 1), encoding="utf-8")
+
+          jp_path = Path("jp/README.md")
+          jp = jp_path.read_text(encoding="utf-8")
+          jp_marker = "これはFigmaへ接続しません。clone、依存関係、build、generatorを安全に確認する最短ルートです。"
+          jp_addition = '''これはFigmaへ接続しません。clone、依存関係、build、generatorを安全に確認する最短ルートです。
+
+          ## 公開前のstandalone packageを検証する
+
+          npm packageはまだ一般公開していません。maintainerとreviewerは、公開候補を1つのtarballとして作成し、空の環境へclean installできます。
+
+          ```bash
+          pnpm check
+          pnpm dist:pack -- --output ./release-artifacts
+          pnpm dist:smoke
+          ```
+
+          `dist:smoke`は生成したtarballだけを一時projectへinstallし、CLI、bridge command、MCP起動、offline生成、installed packageからのPlugin manifest生成を確認します。詳細は[standalone npm distribution](../docs/distribution.md)と[Figma Desktop smoke test](../docs/desktop-smoke-test.md)を参照してください。
+'''.replace("          ", "")
+          if jp_marker not in jp:
+              raise SystemExit("Japanese README insertion marker was not found")
+          jp_path.write_text(jp.replace(jp_marker, jp_addition, 1), encoding="utf-8")
+
+      - name: Remove one-shot workflow before validation
+        run: rm .github/workflows/productization-finalize-once.yml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run complete source gate
+        run: pnpm check
+
+      - name: Clean-install standalone candidate
+        run: pnpm dist:smoke
+
+      - name: Commit verified result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md jp/README.md tools/build-distribution.mjs tools/smoke-distribution.mjs .github/workflows/productization-finalize-once.yml
+          git diff --cached --check
+          git commit -m 'build: finalize standalone package verification'
+          git push origin HEAD:feat/productization-v1-20260830

@@ -1,0 +1,59 @@
+name: Fix MCP entry once
+
+on:
+  push:
+    branches:
+      - feat/productization-v1-20260830
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-productization-mcp-entry
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feat/productization-v1-20260830
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+      - name: Use the MCP package entry instead of crossing TypeScript source roots
+        shell: node {0}
+        run: |
+          const fs = require('node:fs');
+          const root = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const cli = JSON.parse(fs.readFileSync('packages/cli/package.json', 'utf8'));
+          root.devDependencies = { ...(root.devDependencies || {}), '@figma-mcp-free/server': 'workspace:*' };
+          cli.devDependencies = { ...(cli.devDependencies || {}), '@figma-mcp-free/server': 'workspace:*' };
+          fs.writeFileSync('package.json', JSON.stringify(root, null, 2) + '\n');
+          fs.writeFileSync('packages/cli/package.json', JSON.stringify(cli, null, 2) + '\n');
+          let source = fs.readFileSync('packages/cli/src/mcp-cli.ts', 'utf8');
+          source = source.replace('await import("../../mcp-server/src/index.js");', 'await import("@figma-mcp-free/server");');
+          fs.writeFileSync('packages/cli/src/mcp-cli.ts', source);
+          for (const name of [
+            'I_WILL_NOT_CREATE_MORE_FILES','NO_MORE_PROBES','oops-again','.productization-pr-marker',
+            'DO_NOT_COMMIT_CHECK.tmp','DO_NOT_COMMIT_CHECK_2.tmp'
+          ]) fs.rmSync(name, { force: true });
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm release:check
+      - run: rm -f .github/workflows/fix-mcp-entry-once.yml
+      - name: Commit exact verified fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: respect the MCP workspace package boundary'
+          git push origin HEAD:feat/productization-v1-20260830

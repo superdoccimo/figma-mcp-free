@@ -1,0 +1,138 @@
+name: Use clean staging package once
+
+on:
+  push:
+    branches:
+      - feat/productization-v1-20260830
+
+permissions:
+  contents: write
+
+concurrency:
+  group: clean-staging-productization
+  cancel-in-progress: true
+
+jobs:
+  stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feat/productization-v1-20260830
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+
+      - name: Separate the development workspace from the public tarball
+        shell: node {0}
+        run: |
+          const fs = require('node:fs');
+          const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
+          const writeJson = (p, v) => fs.writeFileSync(p, JSON.stringify(v, null, 2) + '\n');
+
+          const cli = readJson('packages/cli/package.json');
+          cli.private = true;
+          delete cli.publishConfig;
+          delete cli.files;
+          delete cli.scripts.prepack;
+          writeJson('packages/cli/package.json', cli);
+
+          let build = fs.readFileSync('tools/build-public-package.mjs', 'utf8');
+          build = build
+            .replace('const pluginOut = join(root, "packages", "cli", "plugin");', 'const pluginOut = join(root, "packages", "cli", "plugin");\nconst publicRoot = join(root, "build", "public-package");')
+            .replace('rmSync(pluginOut, { recursive: true, force: true });', 'rmSync(pluginOut, { recursive: true, force: true });\nrmSync(publicRoot, { recursive: true, force: true });')
+            .replace('writeFileSync(join(outdir, "build-info.json"), `${JSON.stringify({ version, commit }, null, 2)}\\n`, "utf8");', `writeFileSync(join(outdir, "build-info.json"), \\`\\${JSON.stringify({ version, commit }, null, 2)}\\\\n\\`, "utf8");
+
+mkdirSync(publicRoot, { recursive: true });
+cpSync(outdir, join(publicRoot, "dist"), { recursive: true });
+cpSync(pluginOut, join(publicRoot, "plugin"), { recursive: true });
+cpSync(join(root, "README.md"), join(publicRoot, "README.md"));
+cpSync(join(root, "LICENSE"), join(publicRoot, "LICENSE"));
+const publicManifest = {
+  name: "figma-mcp-free",
+  version,
+  description: "Quota-aware, read-only Figma tooling for MCP, CLI, design tokens, starter code, and an authenticated local Plugin bridge",
+  license: "MIT",
+  type: "module",
+  engines: { node: ">=18" },
+  bin: {
+    "figma-mcp-free": "dist/index.js",
+    "figma-mcp-free-bridge": "dist/bridge-cli.js",
+    "figma-mcp-free-mcp": "dist/mcp-cli.js",
+    "figma-mcp-free-verify-desktop": "dist/verify-desktop.js",
+    "figma-mcp-free-plugin": "dist/plugin-cli.js"
+  },
+  files: ["dist", "plugin", "README.md", "LICENSE"],
+  dependencies: {},
+  repository: { type: "git", url: "git+https://github.com/superdoccimo/figma-mcp-free.git" },
+  bugs: { url: "https://github.com/superdoccimo/figma-mcp-free/issues" },
+  homepage: "https://github.com/superdoccimo/figma-mcp-free#readme"
+};
+writeFileSync(join(publicRoot, "package.json"), \\`\\${JSON.stringify(publicManifest, null, 2)}\\\\n\\`, "utf8");`);
+          fs.writeFileSync('tools/build-public-package.mjs', build);
+
+          let check = fs.readFileSync('tools/check-public-package.mjs', 'utf8');
+          check = check
+            .replace('const directory = join(root, "packages", "cli");', 'const directory = join(root, "build", "public-package");')
+            .replace('assert.equal(manifest.private, false);', 'assert.equal(manifest.private, undefined);')
+            .replace('assert.equal(existsSync(join(directory, "plugin", "manifest.json")), false);', 'assert.equal(existsSync(join(directory, "plugin", "manifest.json")), false);\nassert.equal(Object.prototype.hasOwnProperty.call(manifest, "scripts"), false);\nassert.doesNotMatch(JSON.stringify(manifest), /workspace:/);');
+          fs.writeFileSync('tools/check-public-package.mjs', check);
+
+          let smoke = fs.readFileSync('tools/smoke-packed-install.mjs', 'utf8');
+          smoke = smoke
+            .replace('const packageDir = join(root, "packages", "cli");', 'const packageDir = join(root, "build", "public-package");')
+            .replace('try {\n  const packDir', 'try {\n  run(process.execPath, [join(root, "tools", "build-public-package.mjs")], root);\n  const packDir');
+          fs.writeFileSync('tools/smoke-packed-install.mjs', smoke);
+
+          let releaseWorkflow = fs.readFileSync('.github/workflows/release-candidate.yml', 'utf8');
+          releaseWorkflow = releaseWorkflow.replace(
+            'npm pack --pack-destination "$PWD/release-artifacts" ./packages/cli',
+            'pnpm run build:public\n          npm pack --pack-destination "$PWD/release-artifacts" ./build/public-package'
+          );
+          fs.writeFileSync('.github/workflows/release-candidate.yml', releaseWorkflow);
+
+          let releasing = fs.readFileSync('docs/releasing.md', 'utf8');
+          releasing = releasing.replace(
+            'Only `packages/cli` is the public npm package. Its tarball bundles',
+            'Only the generated `build/public-package` staging directory is packed for npm. It bundles'
+          );
+          fs.writeFileSync('docs/releasing.md', releasing);
+
+          let cliReadme = fs.readFileSync('packages/cli/README.md', 'utf8');
+          cliReadme = cliReadme.replace(
+            'This is the only workspace package intended for npm publication.',
+            'This workspace package is a development source package. Publication uses the clean generated `build/public-package` staging directory.'
+          );
+          fs.writeFileSync('packages/cli/README.md', cliReadme);
+
+          let ignore = fs.readFileSync('.gitignore', 'utf8');
+          if (!ignore.split(/\r?\n/).includes('/build/')) ignore = ignore.trimEnd() + '\n/build/\n';
+          fs.writeFileSync('.gitignore', ignore);
+
+          for (const name of [
+            'I_WILL_NOT_CREATE_MORE_FILES', 'NO_MORE_PROBES', 'oops-again', '.productization-pr-marker',
+            'DO_NOT_COMMIT_CHECK.tmp', 'DO_NOT_COMMIT_CHECK_2.tmp',
+            '.github/workflows/harden-productization-once.yml',
+            '.github/workflows/remove-last-probe-once.yml',
+            '.github/workflows/absolute-final-clean-once.yml'
+          ]) fs.rmSync(name, { force: true });
+
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm release:check
+      - run: rm -f .github/workflows/use-clean-staging-package-once.yml
+
+      - name: Commit verified staging architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'refactor: build npm artifacts from a clean staging package'
+          git push origin HEAD:feat/productization-v1-20260830

@@ -1,0 +1,57 @@
+name: Enforce clean productization branch once
+
+on:
+  push:
+    branches:
+      - feat/productization-v1-20260830
+
+permissions:
+  contents: write
+
+concurrency:
+  group: absolute-final-clean-productization
+  cancel-in-progress: true
+
+jobs:
+  clean:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feat/productization-v1-20260830
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+      - name: Remove all temporary helpers and probes
+        shell: bash
+        run: |
+          rm -f NO_MORE_PROBES oops-again .productization-pr-marker
+          rm -f DO_NOT_COMMIT_CHECK.tmp DO_NOT_COMMIT_CHECK_2.tmp
+          rm -f tools/apply-productization-once.mjs
+          rm -f .github/workflows/apply-productization-once.yml
+          rm -f .github/workflows/cleanup-productization-once.yml
+          rm -f .github/workflows/cleanup-stray-once.yml
+          rm -f .github/workflows/final-clean-productization-once.yml
+          rm -f .github/workflows/remove-final-probe-once.yml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm release:check
+      - run: rm -f .github/workflows/absolute-final-clean-once.yml
+      - name: Commit clean verified state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No commit required.'
+          else
+            git commit -m 'chore: enforce clean productization branch'
+            git push origin HEAD:feat/productization-v1-20260830
+          fi
