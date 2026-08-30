@@ -4,11 +4,15 @@ export interface FigmaClientOptions {
   maxRetries?: number;
   retryDelayMs?: number;
   requestTimeoutMs?: number;
+  maxRetryDelayMs?: number;
   maxAutomaticRetryAfterMs?: number;
   cacheTtlMs?: number;
   maxCacheEntries?: number;
   nodeBatchSize?: number;
-  fetchImpl?: typeof fetch;
+  maxNodeIdsPerRequest?: number;
+  requestBudget?: number;
+  fetchImpl?: typeof globalThis.fetch;
+  fetch?: typeof globalThis.fetch;
 }
 
 export type FigmaCachePolicy = "default" | "reload" | "no-store";
@@ -25,6 +29,40 @@ export interface FigmaClientStats {
   retries: number;
   inFlightJoins: number;
   cacheEntries: number;
+  readonly deduplicatedRequests: number;
+}
+
+export interface FigmaRequestBudgetState {
+  limit: number | null;
+  used: number;
+  remaining: number | null;
+}
+
+export interface FigmaBackendCapabilities {
+  backend: "rest";
+  read: true;
+  write: false;
+  headless: true;
+  requiresPersonalAccessToken: true;
+}
+
+export interface FigmaReadBackend {
+  getCapabilities(): FigmaBackendCapabilities;
+  getFile(fileId: string, depth?: number, options?: FigmaRequestOptions): Promise<FigmaFile>;
+  getComponents(fileId: string, options?: FigmaRequestOptions): Promise<FigmaComponentsResponse>;
+  listFrames(fileId: string, depth?: number, options?: FigmaRequestOptions): Promise<FigmaNode[]>;
+  getNodes(
+    fileId: string,
+    nodeIds: readonly string[],
+    depth?: number,
+    options?: FigmaRequestOptions
+  ): Promise<Record<string, FigmaNode | undefined>>;
+  getNode(
+    fileId: string,
+    nodeId: string,
+    depth?: number,
+    options?: FigmaRequestOptions
+  ): Promise<FigmaNode | undefined>;
 }
 
 export interface FigmaReference {
@@ -40,7 +78,9 @@ export function normalizeFigmaNodeId(nodeId: string): string {
   } catch {
     // Keep the original string if it is not valid percent-encoding.
   }
-  return decoded.replace(/-/g, ":");
+
+  const numericShareId = /^(\d+)-(\d+)$/.exec(decoded);
+  return numericShareId ? `${numericShareId[1]}:${numericShareId[2]}` : decoded;
 }
 
 export function parseFigmaUrl(value: string): FigmaReference | undefined {
@@ -194,6 +234,11 @@ export interface FigmaRateLimitInfo {
   planTier?: string;
   rateLimitType?: string;
   upgradeUrl?: string;
+  requestId?: string;
+}
+
+export interface FigmaRateLimitErrorInfo extends FigmaRateLimitInfo {
+  retryable: boolean;
 }
 
 export class FigmaApiError extends Error {
@@ -201,6 +246,7 @@ export class FigmaApiError extends Error {
   readonly planTier?: string;
   readonly rateLimitType?: string;
   readonly upgradeUrl?: string;
+  readonly requestId?: string;
 
   constructor(
     message: string,
@@ -214,6 +260,37 @@ export class FigmaApiError extends Error {
     this.planTier = rateLimit.planTier;
     this.rateLimitType = rateLimit.rateLimitType;
     this.upgradeUrl = rateLimit.upgradeUrl;
+    this.requestId = rateLimit.requestId;
+  }
+}
+
+export class FigmaRateLimitError extends FigmaApiError {
+  readonly info: Readonly<FigmaRateLimitErrorInfo>;
+
+  constructor(message: string, detail: unknown, info: FigmaRateLimitErrorInfo) {
+    super(message, 429, detail, info);
+    this.name = "FigmaRateLimitError";
+    this.info = Object.freeze({ ...info });
+  }
+}
+
+export class FigmaRequestTimeoutError extends Error {
+  constructor(
+    public readonly timeoutMs: number,
+    public readonly requestUrl?: string
+  ) {
+    super(`Figma API request timed out after ${timeoutMs}ms.`);
+    this.name = "FigmaRequestTimeoutError";
+  }
+}
+
+export class FigmaRequestBudgetError extends Error {
+  constructor(
+    public readonly limit: number,
+    public readonly used: number
+  ) {
+    super(`Figma API request budget exhausted (${used}/${limit} network attempts used).`);
+    this.name = "FigmaRequestBudgetError";
   }
 }
 
@@ -225,11 +302,10 @@ interface CacheEntry {
 const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_RETRY_DELAY_MS = 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 20000;
-const DEFAULT_MAX_AUTOMATIC_RETRY_AFTER_MS = 30000;
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_CACHE_ENTRIES = 128;
 const DEFAULT_NODE_BATCH_SIZE = 100;
-const MAX_RETRY_DELAY_MS = 30000;
+const DEFAULT_MAX_RETRY_DELAY_MS = 30000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -252,6 +328,12 @@ function nonNegativeInteger(value: number | undefined, fallback: number): number
   return Number.isInteger(value) && Number(value) >= 0 ? Number(value) : fallback;
 }
 
+function optionalNonNegativeInteger(value: number | undefined, label: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isInteger(value) || value < 0) throw new Error(`${label} must be a non-negative integer.`);
+  return value;
+}
+
 function normalizeDepth(depth?: number): number | undefined {
   if (depth === undefined) return undefined;
   if (!Number.isInteger(depth) || depth < 0) throw new Error("depth must be a non-negative integer.");
@@ -263,14 +345,22 @@ function rateLimitInfo(headers: Headers): FigmaRateLimitInfo {
     retryAfterMs: parseRetryAfterMs(headers.get("retry-after")),
     planTier: headers.get("x-figma-plan-tier") ?? undefined,
     rateLimitType: headers.get("x-figma-rate-limit-type") ?? undefined,
-    upgradeUrl: headers.get("x-figma-upgrade-link") ?? undefined
+    upgradeUrl: headers.get("x-figma-upgrade-link") ?? undefined,
+    requestId: headers.get("x-figma-request-id") ?? headers.get("x-request-id") ?? undefined
   };
 }
 
-export class FigmaClient {
+function isClearlyLongLivedRateLimit(info: FigmaRateLimitInfo, maxWaitMs: number): boolean {
+  if (info.retryAfterMs !== undefined && info.retryAfterMs > maxWaitMs) return true;
+  const type = info.rateLimitType?.toLowerCase() ?? "";
+  return ["monthly", "daily", "quota", "plan", "subscription", "seat"].some((marker) => type.includes(marker));
+}
+
+export class FigmaClient implements FigmaReadBackend {
   private readonly baseUrl: string;
   private readonly cache = new Map<string, CacheEntry>();
   private readonly inFlight = new Map<string, Promise<unknown>>();
+  private readonly requestBudget?: number;
   private readonly counters = {
     cacheHits: 0,
     cacheMisses: 0,
@@ -282,6 +372,17 @@ export class FigmaClient {
   constructor(private readonly opts: FigmaClientOptions) {
     if (!opts.token?.trim()) throw new Error("Figma token must not be empty.");
     this.baseUrl = (opts.baseUrl ?? "https://api.figma.com/v1").replace(/\/+$/, "");
+    this.requestBudget = optionalNonNegativeInteger(opts.requestBudget, "requestBudget");
+  }
+
+  getCapabilities(): FigmaBackendCapabilities {
+    return {
+      backend: "rest",
+      read: true,
+      write: false,
+      headless: true,
+      requiresPersonalAccessToken: true
+    };
   }
 
   clearCache(): void {
@@ -290,7 +391,29 @@ export class FigmaClient {
 
   getStats(): FigmaClientStats {
     this.pruneExpiredCache();
-    return { ...this.counters, cacheEntries: this.cache.size };
+    const stats = {
+      ...this.counters,
+      cacheEntries: this.cache.size
+    };
+    Object.defineProperty(stats, "deduplicatedRequests", {
+      value: this.counters.inFlightJoins,
+      enumerable: false,
+      configurable: false,
+      writable: false
+    });
+    return stats as FigmaClientStats;
+  }
+
+  getRequestBudgetState(): FigmaRequestBudgetState {
+    const used = this.counters.networkRequests;
+    if (this.requestBudget === undefined) {
+      return { limit: null, used, remaining: null };
+    }
+    return {
+      limit: this.requestBudget,
+      used,
+      remaining: Math.max(0, this.requestBudget - used)
+    };
   }
 
   private headers(): Record<string, string> {
@@ -300,10 +423,22 @@ export class FigmaClient {
     };
   }
 
-  private ensureFetch(): typeof fetch {
-    const implementation = this.opts.fetchImpl ?? globalThis.fetch;
+  private ensureFetch(): typeof globalThis.fetch {
+    const implementation = this.opts.fetchImpl ?? this.opts.fetch ?? globalThis.fetch;
     if (typeof implementation !== "function") throw new Error("global fetch is not available in this runtime");
     return implementation;
+  }
+
+  private maxRetryDelayMs(): number {
+    return nonNegativeInteger(this.opts.maxRetryDelayMs, DEFAULT_MAX_RETRY_DELAY_MS);
+  }
+
+  private maxAutomaticRetryAfterMs(): number {
+    const configured = nonNegativeInteger(
+      this.opts.maxAutomaticRetryAfterMs,
+      this.maxRetryDelayMs()
+    );
+    return Math.min(configured, this.maxRetryDelayMs());
   }
 
   private shouldRetry(status: number): boolean {
@@ -312,35 +447,55 @@ export class FigmaClient {
 
   private fallbackRetryDelay(attempt: number): number {
     const base = nonNegativeInteger(this.opts.retryDelayMs, DEFAULT_RETRY_DELAY_MS);
-    return Math.min(base * 2 ** attempt, MAX_RETRY_DELAY_MS);
+    return Math.min(base * 2 ** attempt, this.maxRetryDelayMs());
   }
 
   private retryDelay(attempt: number, info: FigmaRateLimitInfo): number {
-    return info.retryAfterMs ?? this.fallbackRetryDelay(attempt);
+    return Math.min(info.retryAfterMs ?? this.fallbackRetryDelay(attempt), this.maxRetryDelayMs());
+  }
+
+  private rateLimitIsRetryable(info: FigmaRateLimitInfo): boolean {
+    return !isClearlyLongLivedRateLimit(info, this.maxAutomaticRetryAfterMs());
   }
 
   private canAutomaticallyRetry(attempt: number, status: number, info: FigmaRateLimitInfo): boolean {
     const maxRetries = nonNegativeInteger(this.opts.maxRetries, DEFAULT_MAX_RETRIES);
     if (attempt >= maxRetries || !this.shouldRetry(status)) return false;
-    if (status !== 429 || info.retryAfterMs === undefined) return true;
-    const maxWait = nonNegativeInteger(this.opts.maxAutomaticRetryAfterMs, DEFAULT_MAX_AUTOMATIC_RETRY_AFTER_MS);
-    return info.retryAfterMs <= maxWait;
+    if (status !== 429) return true;
+    return this.rateLimitIsRetryable(info);
+  }
+
+  private consumeRequestBudget(): void {
+    const used = this.counters.networkRequests;
+    if (this.requestBudget !== undefined && used >= this.requestBudget) {
+      throw new FigmaRequestBudgetError(this.requestBudget, used);
+    }
+    this.counters.networkRequests += 1;
   }
 
   private async fetchWithTimeout(url: string): Promise<Response> {
     const timeoutMs = positiveInteger(this.opts.requestTimeoutMs, DEFAULT_REQUEST_TIMEOUT_MS);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    this.consumeRequestBudget();
+
     try {
-      this.counters.networkRequests += 1;
-      return await this.ensureFetch()(url, { headers: this.headers(), signal: controller.signal });
+      const request = this.ensureFetch()(url, { headers: this.headers(), signal: controller.signal });
+      const timeout = new Promise<Response>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new FigmaRequestTimeoutError(timeoutMs, url));
+        }, timeoutMs);
+      });
+      return await Promise.race([request, timeout]);
     } catch (error) {
+      if (error instanceof FigmaRequestTimeoutError) throw error;
       if (error instanceof Error && error.name === "AbortError") {
-        throw new Error(`Figma API request timed out after ${timeoutMs}ms.`);
+        throw new FigmaRequestTimeoutError(timeoutMs, url);
       }
       throw error;
     } finally {
-      clearTimeout(timer);
+      if (timer !== undefined) clearTimeout(timer);
     }
   }
 
@@ -381,6 +536,7 @@ export class FigmaClient {
       try {
         response = await this.fetchWithTimeout(url);
       } catch (error) {
+        if (error instanceof FigmaRequestBudgetError) throw error;
         if (attempt < maxRetries) {
           this.counters.retries += 1;
           await sleep(this.fallbackRetryDelay(attempt));
@@ -401,13 +557,17 @@ export class FigmaClient {
       try {
         detail = await response.json();
       } catch {
-        try { detail = await response.text(); } catch { detail = undefined; }
+        try {
+          detail = await response.text();
+        } catch {
+          detail = undefined;
+        }
       }
 
       const limit = rateLimitInfo(response.headers);
       if (this.canAutomaticallyRetry(attempt, response.status, limit)) {
         this.counters.retries += 1;
-        await sleep(Math.min(this.retryDelay(attempt, limit), MAX_RETRY_DELAY_MS));
+        await sleep(this.retryDelay(attempt, limit));
         continue;
       }
 
@@ -418,12 +578,15 @@ export class FigmaClient {
         : "";
       const planHint = limit.planTier ? `; plan=${limit.planTier}` : "";
       const typeHint = limit.rateLimitType ? `; limit=${limit.rateLimitType}` : "";
-      throw new FigmaApiError(
-        `${errorPrefix}: ${response.status}${retryHint}${planHint}${typeHint}`,
-        response.status,
-        detail,
-        limit
-      );
+      const message = `${errorPrefix}: ${response.status}${retryHint}${planHint}${typeHint}`;
+
+      if (response.status === 429) {
+        throw new FigmaRateLimitError(message, detail, {
+          ...limit,
+          retryable: this.rateLimitIsRetryable(limit)
+        });
+      }
+      throw new FigmaApiError(message, response.status, detail, limit);
     }
   }
 
@@ -431,13 +594,16 @@ export class FigmaClient {
     const policy = options.cache ?? "default";
     const ttlMs = nonNegativeInteger(options.cacheTtlMs, nonNegativeInteger(this.opts.cacheTtlMs, DEFAULT_CACHE_TTL_MS));
 
-    if (policy === "default" && ttlMs > 0) {
-      const cached = this.cacheGet<T>(url);
-      if (cached !== undefined) {
-        this.counters.cacheHits += 1;
-        return cached;
+    if (policy === "default") {
+      if (ttlMs > 0) {
+        const cached = this.cacheGet<T>(url);
+        if (cached !== undefined) {
+          this.counters.cacheHits += 1;
+          return cached;
+        }
+        this.counters.cacheMisses += 1;
       }
-      this.counters.cacheMisses += 1;
+
       const existing = this.inFlight.get(url);
       if (existing) {
         this.counters.inFlightJoins += 1;
@@ -446,7 +612,7 @@ export class FigmaClient {
     }
 
     const request = this.executeRequest<T>(url, errorPrefix);
-    if (policy === "default" && ttlMs > 0) this.inFlight.set(url, request);
+    if (policy === "default") this.inFlight.set(url, request);
     try {
       const value = await request;
       if (policy !== "no-store") this.cacheSet(url, value, ttlMs);
@@ -490,7 +656,10 @@ export class FigmaClient {
     const normalized = [...new Set(nodeIds.map(normalizeFigmaNodeId).filter(Boolean))];
     if (!normalized.length) throw new Error("At least one node ID is required.");
 
-    const batchSize = positiveInteger(this.opts.nodeBatchSize, DEFAULT_NODE_BATCH_SIZE);
+    const batchSize = positiveInteger(
+      this.opts.maxNodeIdsPerRequest ?? this.opts.nodeBatchSize,
+      DEFAULT_NODE_BATCH_SIZE
+    );
     const result: Record<string, FigmaNode | undefined> = {};
     for (let offset = 0; offset < normalized.length; offset += batchSize) {
       const batch = normalized.slice(offset, offset + batchSize);
