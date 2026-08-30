@@ -9,10 +9,14 @@ import { toDesignTokens } from "../packages/design-tokens/dist/index.js";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const sampleNode = JSON.parse(readFileSync(join(root, "examples", "sample-node.json"), "utf8"));
 
+function normalizeText(value) {
+  return value.replace(/\r\n/g, "\n").trimEnd();
+}
+
 for (const framework of ["react", "vue", "svelte", "html"]) {
   test(`${framework} output matches the fixture`, () => {
-    const expected = readFileSync(join(root, "tests", "fixtures", `generated-${framework}.txt`), "utf8").trimEnd();
-    assert.equal(generateCode(sampleNode, framework).trimEnd(), expected);
+    const expected = readFileSync(join(root, "tests", "fixtures", `generated-${framework}.txt`), "utf8");
+    assert.equal(normalizeText(generateCode(sampleNode, framework)), normalizeText(expected));
   });
 }
 
