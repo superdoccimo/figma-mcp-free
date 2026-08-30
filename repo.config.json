@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json.schemastore.org/package.json",
+  "$schema": "./docs/repo-config.schema.json",
   "schemaVersion": 1,
   "upstreamRepository": "superdoccimo/figma-mcp-free",
   "defaultBranch": "main",
