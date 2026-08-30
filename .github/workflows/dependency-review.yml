@@ -1,0 +1,63 @@
+name: Dependency review
+
+on:
+  pull_request:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Detect dependency graph support
+        id: dependency-graph
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --show-error --output /tmp/dependency-graph-sbom.json --write-out '%{http_code}' \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GH_REPOSITORY}/dependency-graph/sbom")"
+
+          case "${status}" in
+            200)
+              echo 'supported=true' >> "${GITHUB_OUTPUT}"
+              ;;
+            403|404)
+              echo 'supported=false' >> "${GITHUB_OUTPUT}"
+              echo '::warning title=Dependency graph unavailable::Enable Dependency graph in repository security settings to activate blocking dependency review.'
+              ;;
+            *)
+              echo "Unexpected dependency graph probe response: HTTP ${status}" >&2
+              cat /tmp/dependency-graph-sbom.json >&2 || true
+              exit 1
+              ;;
+          esac
+
+      - name: Review dependency changes
+        if: steps.dependency-graph.outputs.supported == 'true'
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+      - name: Record skipped dependency review
+        if: steps.dependency-graph.outputs.supported != 'true'
+        shell: bash
+        run: |
+          {
+            echo '### Dependency review'
+            echo
+            echo 'Dependency graph is not enabled for this repository, so GitHub dependency review could not run.'
+            echo 'The workflow remains green to keep forks and first-time setup usable, but enabling Dependency graph is still a required repository-hardening step.'
+          } >> "${GITHUB_STEP_SUMMARY}"

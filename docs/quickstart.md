@@ -1,111 +1,104 @@
 # Quickstart
 
-This guide walks through the minimum setup to run `figma-mcp-free` locally and call the tools from the CLI or an MCP client.
+## Requirements
 
-## 1. Install dependencies
+- Node.js 18 or newer
+- pnpm 9
+- A Figma Personal Access Token only for live REST reads
+
+Normal build, tests, offline demo and fork checks do not require a token.
+
+## 1. Clone and verify
 
 ```bash
-pnpm install
-pnpm -r build
+git clone https://github.com/superdoccimo/figma-mcp-free.git
+cd figma-mcp-free
+pnpm install --frozen-lockfile
+pnpm check
 ```
 
-Use Node.js 18+ and ensure `pnpm` is available (install with `npm install -g pnpm` if required).
+Fork clone:
+
+```bash
+git clone https://github.com/<YOU>/figma-mcp-free.git
+cd figma-mcp-free
+git remote add upstream https://github.com/superdoccimo/figma-mcp-free.git
+pnpm install --frozen-lockfile
+pnpm check:fork
+```
 
 ## 2. Run the offline demo
-
-Start here when you do not have a Figma token yet, or when you only want to verify the generator.
 
 ```bash
 pnpm --filter figma-mcp-free dev -- generate-from-json ./examples/sample-node.json --framework react --use-tokens ./examples/sample-tokens.json
 ```
 
-This command reads local JSON files only. It does not call the Figma API.
+This confirms installation and generation without calling Figma.
 
-## 3. Store your Figma token
-
-You can export a Personal Access Token from the Figma settings screen. Once copied, store it with the CLI so both the server and the CLI tools can find it later.
+## 3. Configure live access
 
 ```bash
 pnpm --filter figma-mcp-free dev -- init
 ```
 
-Run non-interactively (CI/scripts) with `pnpm --filter figma-mcp-free dev -- init --token <FIGMA_TOKEN>`.
+Alternatively set `FIGMA_TOKEN` in the process environment. The environment takes precedence over local configuration.
 
-Verify the persisted config:
+Do not commit the token or paste it into an issue.
 
-```bash
-pnpm --filter figma-mcp-free dev -- config get token
+## 4. Copy a selected-layer link
+
+Supported shapes:
+
+```text
+https://www.figma.com/design/<FILE_ID>/...?node-id=1-2
+https://www.figma.com/file/<FILE_ID>/...?node-id=1-2
 ```
 
-If the environment variable `FIGMA_TOKEN` is present it takes precedence at runtime.
+The URL parser normalizes common numeric share-link node IDs from `1-2` to `1:2`.
 
-## 4. Prepare a Figma URL
+`/slides` links are not supported by the current REST workflow.
 
-Use a Figma `/file` or `/design` link to a selected frame or component. `/slides` links are not supported by this REST API workflow.
-
-The CLI and MCP tools accept the full Figma URL and normalize URL node IDs such as `node-id=1-2` to the API format (`1:2`) automatically.
-
-Optional verification:
-
-```bash
-curl -H "X-Figma-Token: $FIGMA_TOKEN" \
-  "https://api.figma.com/v1/files/<FILE_ID>/nodes?ids=<NODE_ID>"
-```
-
-If JSON is returned, the token, file ID, and node ID are aligned.
-
-## 5. Try the CLI
+## 5. Diagnose before generating
 
 ```bash
 FIGMA_URL="https://www.figma.com/design/<FILE_ID>/...?node-id=1-2"
-pnpm --filter figma-mcp-free dev -- components "$FIGMA_URL" --limit 3
-pnpm --filter figma-mcp-free dev -- export-tokens "$FIGMA_URL" > tokens.json
-pnpm --filter figma-mcp-free dev -- generate "$FIGMA_URL" --framework react --use-tokens ./tokens.json
+pnpm --filter figma-mcp-free dev -- doctor "$FIGMA_URL"
+pnpm --filter figma-mcp-free dev -- doctor "$FIGMA_URL" --json
 ```
 
-You can still pass `<FILE_ID> <NODE_ID>` directly:
+Sanitize JSON output before sharing it.
+
+## 6. Inspect and generate
 
 ```bash
-pnpm --filter figma-mcp-free dev -- generate <FILE_ID> <NODE_ID> --framework react
+pnpm --filter figma-mcp-free dev -- inspect-selection "$FIGMA_URL" --depth 2 --max-children 20
+pnpm --filter figma-mcp-free dev -- components "$FIGMA_URL" --query Button --limit 5
+pnpm --filter figma-mcp-free dev -- export-tokens "$FIGMA_URL" > tokens.json
+pnpm --filter figma-mcp-free dev -- generate "$FIGMA_URL" --framework react --use-tokens ./tokens.json > out.jsx
 ```
 
-## 6. Start the MCP server
+Generated code is a starter and still requires accessibility, responsive, interaction, asset and visual review.
+
+## 7. Start the MCP server
 
 ```bash
 pnpm -r build
 node packages/mcp-server/dist/index.js
 ```
 
-The server expects `FIGMA_TOKEN` in the environment or falls back to the stored token via `@figma-mcp-free/config`.
+Use one of the examples as a starting point:
 
-## 7. Connect from your IDE
+- [`examples/codex-config/mcp.json`](../examples/codex-config/mcp.json)
+- [`examples/cursor-config/mcp.json`](../examples/cursor-config/mcp.json)
 
-- Claude Desktop / Claude Code: register the server JSON manifest.
-- Cursor / Windsurf / Cline: add the STDIO server with the command above as the executable.
+## 8. Audit forks
 
-The server exposes these MCP tools:
+```bash
+pnpm fork:audit
+```
 
-- `get_file`
-- `get_components`
-- `list_frames`
-- `generate_code`
-- `export_tokens`
+This compares all public forks with upstream without modifying them.
 
-Each tool accepts either `fileId` or `figmaUrl`. `generate_code` can read `nodeId` from the URL when it includes `?node-id=...`.
+## Package installation status
 
-For large files, MCP `get_file` and `list_frames` accept an optional `depth` value. For example, `depth: 2` limits the file payload to pages and their direct children.
-
-### Choosing the right tool
-
-Use `generate_code` when you have a selected frame or component URL and want
-starter React, Vue, Svelte, or HTML output. Use `get_components` when you need
-the file's component inventory, such as component keys, names, and node IDs. It
-does not gather selected-layer implementation context. Use `get_file` with a
-small `depth`, or `list_frames`, when you need to inspect structure before
-choosing a node.
-
-Figma's hosted or desktop MCP server may expose different workflow-oriented
-tools. This project is a read-only REST API workflow, so match requests to the
-tool names above instead of assuming official server tool names are available.
-
-Refer to `docs/troubleshooting.md` if calls fail due to token scopes, rate limiting, or manifest configuration issues.
+Do not assume an npm package is public merely because a package manifest exists. Until a verifiable GitHub Release identifies published versions, use the source checkout workflow above.

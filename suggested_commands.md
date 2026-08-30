@@ -1,126 +1,80 @@
-# figma-mcp-free Suggested Commands
+# Verified Command Reference
 
-Note: These are suggested local commands to scaffold and work on the project. They are not executed automatically here.
+These commands are intended for a source checkout. The repository does not advertise npm installation until a verifiable release confirms publication.
 
-## 0) Prereqs
-- Node.js 18+ and pnpm installed
-- Figma Personal Access Token ready (scoped for file read)
+## Install and complete verification
 
-## 1) Bootstrap monorepo
-```
-pnpm init -y
-pnpm add -w -D typescript tsx eslint prettier
-```
-- Add workspace config to `package.json`
-```
-# if jq is available
-jq '. + {"private": true, "workspaces": ["packages/*"], "scripts": {"build": "pnpm -r build", "dev": "pnpm -r dev"}}' package.json > package.tmp && mv package.tmp package.json
-```
-- Base tsconfig
-```
-mkdir -p tsconfig && cat > tsconfig/base.json << 'EOF'
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ES2022",
-    "moduleResolution": "Bundler",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "outDir": "dist",
-    "types": ["node"]
-  }
-}
-EOF
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm check
 ```
 
-## 2) Create packages skeleton
-```
-mkdir -p packages/{mcp-server,figma-client,design-tokens,code-generator,cli}
+## Offline generation
+
+```bash
+pnpm --filter figma-mcp-free dev -- generate-from-json ./examples/sample-node.json --framework react --use-tokens ./examples/sample-tokens.json
+pnpm --filter figma-mcp-free dev -- generate-from-json ./examples/sample-node.json --framework vue
+pnpm --filter figma-mcp-free dev -- generate-from-json ./examples/sample-node.json --framework svelte
+pnpm --filter figma-mcp-free dev -- generate-from-json ./examples/sample-node.json --framework html
 ```
 
-### packages/mcp-server
-```
-cd packages/mcp-server
-pnpm init -y
-pnpm add @modelcontextprotocol/sdk zod
-pnpm add -D typescript tsx
-cat > tsconfig.json << 'EOF'
-{ "extends": "../../tsconfig/base.json", "compilerOptions": {"outDir": "dist"}, "include": ["src"] }
-EOF
-mkdir -p src && cat > src/index.ts << 'EOF'
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio";
-import { Server } from "@modelcontextprotocol/sdk/server";
+## Configure and diagnose live access
 
-async function main() {
-  const server = new Server({
-    name: "figma-mcp-free",
-    version: "0.1.0",
-    tools: []
-  });
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-}
-
-main().catch(err => { console.error(err); process.exit(1); });
-EOF
-jq '. + {"type":"module","main":"dist/index.js","scripts":{"build":"tsc -p .","dev":"tsx src/index.ts"}}' package.json > package.tmp && mv package.tmp package.json
-cd -
+```bash
+pnpm --filter figma-mcp-free dev -- init
+FIGMA_URL="https://www.figma.com/design/<FILE_ID>/...?node-id=1-2"
+pnpm --filter figma-mcp-free dev -- doctor "$FIGMA_URL"
+pnpm --filter figma-mcp-free dev -- doctor "$FIGMA_URL" --json
 ```
 
-### packages/figma-client
-```
-cd packages/figma-client
-pnpm init -y
-pnpm add undici zod
-pnpm add -D typescript
-cat > tsconfig.json << 'EOF'
-{ "extends": "../../tsconfig/base.json", "compilerOptions": {"outDir": "dist"}, "include": ["src"] }
-EOF
-mkdir -p src && cat > src/index.ts << 'EOF'
-export interface FigmaClientOptions { token: string }
-export class FigmaClient {
-  constructor(private opts: FigmaClientOptions) {}
-}
-EOF
-jq '. + {"type":"module","main":"dist/index.js","scripts":{"build":"tsc -p ."}}' package.json > package.tmp && mv package.tmp package.json
-cd -
+## Inspect and generate
+
+```bash
+pnpm --filter figma-mcp-free dev -- inspect-selection "$FIGMA_URL" --depth 2 --max-children 20
+pnpm --filter figma-mcp-free dev -- components "$FIGMA_URL" --query Button --limit 5
+pnpm --filter figma-mcp-free dev -- export-tokens "$FIGMA_URL" > tokens.json
+pnpm --filter figma-mcp-free dev -- generate "$FIGMA_URL" --framework react --use-tokens ./tokens.json > out.jsx
 ```
 
-### packages/cli
-```
-cd packages/cli
-pnpm init -y
-pnpm add commander dotenv
-pnpm add -D typescript tsx
-cat > tsconfig.json << 'EOF'
-{ "extends": "../../tsconfig/base.json", "compilerOptions": {"outDir": "dist"}, "include": ["src"] }
-EOF
-mkdir -p src && cat > src/index.ts << 'EOF'
-#!/usr/bin/env node
-import { Command } from "commander";
-const program = new Command();
-program
-  .name("figma-mcp-free")
-  .description("CLI for figma-mcp-free")
-  .version("0.1.0");
-program.command("init").action(async() => { console.log("Init wizard TBD"); });
-program.parse();
-EOF
-jq '. + {"type":"module","bin":{"figma-mcp-free":"dist/index.js"},"scripts":{"build":"tsc -p .","dev":"tsx src/index.ts"}}' package.json > package.tmp && mv package.tmp package.json
-cd -
-```
+## Start MCP server
 
-## 3) Environment
-```
-export FIGMA_TOKEN=xxxxxxxx
-```
-
-## 4) Dev and build
-```
-pnpm install
+```bash
 pnpm -r build
-pnpm --filter ./packages/mcp-server dev
+node packages/mcp-server/dist/index.js
 ```
 
+## Focused developer checks
+
+```bash
+pnpm run build
+pnpm run typecheck
+pnpm run test
+pnpm run smoke
+pnpm run check:secrets
+pnpm run check:fork
+pnpm run pack:check
+git diff --check
+```
+
+## Fork maintenance
+
+```bash
+git remote add upstream https://github.com/superdoccimo/figma-mcp-free.git
+git fetch upstream
+git switch main
+git merge --ff-only upstream/main
+pnpm check:fork
+pnpm fork:audit
+pnpm fork:audit:json > fork-audit.json
+```
+
+## PowerShell environment example
+
+```powershell
+$env:FIGMA_TOKEN = "..."
+$env:FIGMA_URL = "https://www.figma.com/design/<FILE_ID>/...?node-id=1-2"
+pnpm --filter figma-mcp-free dev -- doctor $env:FIGMA_URL
+```
+
+Never paste a real token, private file ID or private design text into an issue or shared transcript.

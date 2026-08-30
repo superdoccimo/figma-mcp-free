@@ -1,0 +1,13 @@
+{
+  "$schema": "./docs/repo-config.schema.json",
+  "schemaVersion": 1,
+  "upstreamRepository": "superdoccimo/figma-mcp-free",
+  "defaultBranch": "main",
+  "packageScope": "@figma-mcp-free",
+  "forkPolicy": {
+    "runtimeSourceMustBeOwnerNeutral": true,
+    "ciMustNotRequireSecrets": true,
+    "pullRequestTargetAllowed": false,
+    "publishingIsOptIn": true
+  }
+}

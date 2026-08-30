@@ -1,0 +1,9 @@
+# Default review ownership
+* @superdoccimo
+
+# Security and release-sensitive areas
+/.github/ @superdoccimo
+/SECURITY.md @superdoccimo
+/docs/releasing.md @superdoccimo
+/packages/config/ @superdoccimo
+/packages/mcp-server/ @superdoccimo
