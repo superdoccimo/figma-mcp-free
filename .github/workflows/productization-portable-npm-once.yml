@@ -1,0 +1,202 @@
+name: Finalize portable npm packaging once
+
+on:
+  push:
+    branches:
+      - feat/productization-v1-20260830
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: productization-portable-npm-once
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Cancel superseded productization automations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run list --repo "$GITHUB_REPOSITORY" --branch feat/productization-v1-20260830 --status in_progress --limit 50 --json databaseId,name \
+            | jq -r '.[] | select(.name == "Verify and merge productization once" or .name == "Finalize productization once") | .databaseId' \
+            | while read -r run_id; do
+                [[ -z "$run_id" ]] || gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY" || true
+              done
+
+      - name: Checkout productization branch
+        uses: actions/checkout@v7
+        with:
+          ref: feat/productization-v1-20260830
+          fetch-depth: 0
+
+      - name: Rebase on current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          git rebase origin/main
+
+      - name: Make npm process launching cross-platform
+        shell: python
+        run: |
+          from pathlib import Path
+
+          pack_path = Path("tools/pack-distribution.mjs")
+          pack = pack_path.read_text(encoding="utf-8")
+          marker = 'const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";'
+          replacement = marker + '\nconst npmNeedsShell = process.platform === "win32";'
+          if "const npmNeedsShell" not in pack:
+              if marker not in pack:
+                  raise SystemExit("npm command marker not found in pack-distribution.mjs")
+              pack = pack.replace(marker, replacement, 1)
+          options_marker = '{ cwd: staged.packageDir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }'
+          options_replacement = '{ cwd: staged.packageDir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], shell: npmNeedsShell }'
+          if options_replacement not in pack:
+              if options_marker not in pack:
+                  raise SystemExit("npm pack options marker not found")
+              pack = pack.replace(options_marker, options_replacement, 1)
+          pack_path.write_text(pack, encoding="utf-8")
+
+          smoke_path = Path("tools/smoke-distribution.mjs")
+          smoke = smoke_path.read_text(encoding="utf-8")
+          stdio_marker = '    windowsHide: true\n  });'
+          stdio_replacement = '    windowsHide: true,\n    shell: options.shell ?? false\n  });'
+          if "shell: options.shell" not in smoke:
+              if stdio_marker not in smoke:
+                  raise SystemExit("run helper marker not found in smoke-distribution.mjs")
+              smoke = smoke.replace(stdio_marker, stdio_replacement, 1)
+          install_marker = '    ], { cwd: installRoot });'
+          install_replacement = '    ], { cwd: installRoot, shell: process.platform === "win32" });'
+          if install_replacement not in smoke:
+              if install_marker not in smoke:
+                  raise SystemExit("npm install call marker not found")
+              smoke = smoke.replace(install_marker, install_replacement, 1)
+          smoke_path.write_text(smoke, encoding="utf-8")
+
+      - name: Remove all one-shot workflows
+        run: |
+          rm -f .github/workflows/productization-finalize-once.yml
+          rm -f .github/workflows/productization-merge-once.yml
+          rm -f .github/workflows/productization-portable-npm-once.yml
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run complete source gate
+        run: pnpm check
+
+      - name: Clean-install standalone candidate
+        run: pnpm dist:smoke
+
+      - name: Commit and push final branch
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m 'fix: make standalone npm verification portable'
+          fi
+          git push --force-with-lease origin HEAD:feat/productization-v1-20260830
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: feat/productization-v1-20260830
+        shell: bash
+        run: |
+          set -euo pipefail
+          PR_NUMBER="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --base main --state open --json number --jq '.[0].number // empty')"
+          if [[ -z "$PR_NUMBER" ]]; then
+            cat > /tmp/pr-body.md <<'BODY'
+          ## Purpose
+
+          Make the single-package `figma-mcp-free` release candidate reproducibly installable from its tarball on Linux, Windows, and macOS without publishing it prematurely.
+
+          ## Verification
+
+          The exact head must pass source checks, clean tarball installation, CLI and Plugin setup, MCP startup, CodeQL, and dependency review. Public npm or GitHub release remains blocked pending real Figma Desktop evidence and human approval.
+          BODY
+            PR_URL="$(gh pr create --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --base main --title 'fix: make standalone npm packaging portable' --body-file /tmp/pr-body.md)"
+            PR_NUMBER="${PR_URL##*/}"
+          else
+            if [[ "$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" == "true" ]]; then
+              gh pr ready "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
+            fi
+          fi
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for exact-head checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ steps.commit.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(CI CodeQL "Dependency review")
+          for attempt in $(seq 1 180); do
+            runs="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${HEAD_SHA}&per_page=100")"
+            failed=0
+            complete=0
+            for name in "${required[@]}"; do
+              row="$(jq -c --arg name "$name" '[.workflow_runs[] | select(.name == $name)] | sort_by(.created_at) | last // {}' <<<"$runs")"
+              status="$(jq -r '.status // "missing"' <<<"$row")"
+              conclusion="$(jq -r '.conclusion // ""' <<<"$row")"
+              if [[ "$status" == "completed" && "$conclusion" == "success" ]]; then
+                complete=$((complete + 1))
+              elif [[ "$status" == "completed" ]]; then
+                echo "$name failed with conclusion $conclusion" >&2
+                failed=1
+              fi
+            done
+            if [[ "$failed" -eq 1 ]]; then exit 1; fi
+            if [[ "$complete" -eq 3 ]]; then exit 0; fi
+            sleep 10
+          done
+          exit 1
+
+      - name: Merge exact verified head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          gh pr merge "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --squash \
+            --match-head-commit "$HEAD_SHA" \
+            --subject 'build: ship one clean-installable npm release candidate' \
+            --body 'Bundle internal runtime packages into one candidate, prove clean installation across Linux, Windows, and macOS, and keep public release blocked until real Figma Desktop evidence and human approval.'
+
+      - name: Verify merged state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          test -n "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.merged_at // empty')"
