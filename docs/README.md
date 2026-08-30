@@ -7,6 +7,7 @@ Start here:
 - [Architecture](architecture.md)
 - [Forking and upstream contribution](forking.md)
 - [Release policy](releasing.md)
+- [Recommended GitHub repository settings](repository-settings.md)
 - [Why this exists](why-this-exists.md)
 - [Demo runbook](demo/runbook.md)
 - [Launch and release checklist](launch-checklist.md)

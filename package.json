@@ -22,7 +22,7 @@
     "check:fork": "node tools/check-fork-compat.mjs",
     "pack:check": "node tools/check-packages.mjs",
     "fork:audit": "node tools/audit-forks.mjs",
-    "fork:audit:json": "node tools/audit-forks.mjs --json fork-audit.json --markdown fork-audit.md",
+    "fork:audit:json": "node tools/audit-forks.mjs --format json --no-files",
     "check": "pnpm run build && pnpm run typecheck && pnpm run test && pnpm run smoke && pnpm run check:secrets && pnpm run check:portability && pnpm run check:fork && pnpm run pack:check",
     "cli": "pnpm --filter figma-mcp-free dev",
     "mcp": "pnpm --filter @figma-mcp-free/server dev"
