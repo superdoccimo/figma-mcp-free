@@ -38,8 +38,37 @@ jobs:
       - name: Install current lockfile
         run: pnpm install --frozen-lockfile
 
-      - name: Upgrade the maintained MCP v1 SDK
-        run: pnpm --filter @figma-mcp-free/server add '@modelcontextprotocol/sdk@^1.30.0'
+      - name: Pin patched dependency resolutions
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+
+          const rootPath = 'package.json';
+          const root = JSON.parse(readFileSync(rootPath, 'utf8'));
+          root.pnpm = {
+            ...(root.pnpm ?? {}),
+            overrides: {
+              ...(root.pnpm?.overrides ?? {}),
+              '@hono/node-server': '1.19.15',
+              'body-parser': '2.3.0',
+              'esbuild': '0.28.1',
+              'fast-uri': '3.1.6',
+              'hono': '4.13.5',
+              'ip-address': '10.7.0',
+              'qs': '6.16.0'
+            }
+          };
+          writeFileSync(rootPath, `${JSON.stringify(root, null, 2)}\n`);
+
+          const serverPath = 'packages/mcp-server/package.json';
+          const server = JSON.parse(readFileSync(serverPath, 'utf8'));
+          server.dependencies['@modelcontextprotocol/sdk'] = '^1.30.0';
+          writeFileSync(serverPath, `${JSON.stringify(server, null, 2)}\n`);
+          NODE
+
+          pnpm install --no-frozen-lockfile
+          pnpm dedupe
 
       - name: Record resolved security-sensitive dependencies
         shell: bash
@@ -48,18 +77,22 @@ jobs:
             echo '# Dependency resolution'
             echo
             pnpm --filter @figma-mcp-free/server why @modelcontextprotocol/sdk || true
+            pnpm --filter @figma-mcp-free/server why @hono/node-server || true
             pnpm --filter @figma-mcp-free/server why hono || true
+            pnpm --filter @figma-mcp-free/server why body-parser || true
+            pnpm --filter @figma-mcp-free/server why qs || true
             pnpm --filter @figma-mcp-free/server why fast-uri || true
             pnpm --filter @figma-mcp-free/server why ip-address || true
+            pnpm why esbuild || true
           } | tee dependency-resolution.txt
 
-      - name: Audit refreshed lockfile
+      - name: Audit refreshed lockfile at all severities
         id: audit
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          pnpm audit --audit-level high --json | tee dependency-audit.json
+          pnpm audit --audit-level low --json | tee dependency-audit.json
 
       - name: Run complete repository checks
         id: checks
@@ -72,6 +105,7 @@ jobs:
         with:
           name: dependency-refresh-${{ github.sha }}
           path: |
+            package.json
             packages/mcp-server/package.json
             pnpm-lock.yaml
             dependency-audit.json
