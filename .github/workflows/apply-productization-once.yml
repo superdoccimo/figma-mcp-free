@@ -1,0 +1,85 @@
+name: Apply productization patch once
+
+on:
+  push:
+    branches:
+      - feat/productization-v1-20260830
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-productization-once
+  cancel-in-progress: true
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout productization branch
+        uses: actions/checkout@v7
+        with:
+          ref: feat/productization-v1-20260830
+          fetch-depth: 0
+
+      - name: Reconstruct and verify patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/productization-patch/part-* > /tmp/figma-productization.patch.gz.b64
+          printf '%s  %s\n' \
+            'd6ad03c3d5109a2f3c71788e2cba0cbef1dde93609fe522bfbbd5e5415b8e40f' \
+            '/tmp/figma-productization.patch.gz.b64' | sha256sum --check
+          base64 --decode /tmp/figma-productization.patch.gz.b64 | gzip --decompress > /tmp/figma-productization.patch
+          printf '%s  %s\n' \
+            'ebf6ba14bd19f267c3566d34474e7418a60ecfb9711c5bb5767c7a34cbf25db4' \
+            '/tmp/figma-productization.patch' | sha256sum --check
+
+      - name: Apply reviewed productization changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --index --whitespace=error-all /tmp/figma-productization.patch
+          git rm -r .github/productization-patch
+          git rm .github/workflows/apply-productization-once.yml
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install exact dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run complete productization gate
+        run: pnpm check
+
+      - name: Verify staged tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git diff --cached --check
+          if [[ -n "$(git status --porcelain --untracked-files=all | grep '^??' || true)" ]]; then
+            echo 'Unexpected untracked files remain after the productization gate.' >&2
+            git status --short >&2
+            exit 1
+          fi
+
+      - name: Commit verified productization changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: prepare one-package distribution and Desktop evidence gate'
+          git push origin HEAD:feat/productization-v1-20260830
