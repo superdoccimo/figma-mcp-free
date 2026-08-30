@@ -25,7 +25,7 @@ Keep the homepage empty until a maintained project site exists.
 
 In **Settings → Code security and analysis**:
 
-1. Enable **Dependency graph**. Until it is enabled, the dependency workflow runs `pnpm audit --audit-level high`; that fallback is useful but is not change-aware dependency review.
+1. Enable **Dependency graph**. Until it is enabled, the dependency workflow runs a committed-lockfile audit; that fallback is useful but is not change-aware dependency review.
 2. Enable **Dependabot alerts** and **Dependabot security updates**.
 3. Enable **Secret scanning** and **Push protection** when GitHub offers them for the repository.
 4. Enable **Private vulnerability reporting** so sensitive reports do not require a public issue.
@@ -42,6 +42,7 @@ Create a ruleset targeting `main` with these protections:
 - block force pushes;
 - block branch deletion;
 - require `verify (18.x)`, `verify (20.x)`, and `verify (22.x)`;
+- require `verify (windows-latest, 22.x)` and `verify (macos-latest, 22.x)`;
 - require both `Analyze (javascript-typescript)` and `Analyze (actions)` after the CodeQL workflow has passed once;
 - require `Dependency review` after the workflow has passed once;
 - dismiss stale approvals when the head commit changes if more maintainers are added later;
@@ -79,6 +80,7 @@ Before the first package publication:
 3. Use npm trusted publishing or another provenance-capable flow instead of a long-lived token where supported.
 4. Publish only from a reviewed tag whose commit passed the complete CI matrix.
 5. Verify the registry package before adding `npm install` or `npx` commands to public documentation.
+6. For the local Figma Plugin bridge, record a real Figma Desktop smoke test on the exact release candidate.
 
 ## Verification after settings changes
 

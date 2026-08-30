@@ -1,7 +1,7 @@
 {
   "name": "figma-mcp-free",
   "version": "0.1.0",
-  "description": "Read-only Figma REST API CLI for inspection, token export, and basic code generation",
+  "description": "Read-only Figma REST API and local-plugin CLI for inspection, token export, and code generation",
   "type": "module",
   "files": [
     "dist",
@@ -9,7 +9,8 @@
     "LICENSE"
   ],
   "bin": {
-    "figma-mcp-free": "./dist/index.js"
+    "figma-mcp-free": "./dist/index.js",
+    "figma-mcp-free-bridge": "./dist/bridge-cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -32,13 +33,14 @@
   "bugs": {
     "url": "https://github.com/superdoccimo/figma-mcp-free/issues"
   },
-  "keywords": ["figma", "mcp", "cli", "rest-api", "read-only"],
+  "keywords": ["figma", "mcp", "cli", "rest-api", "plugin", "local-bridge", "read-only"],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "build": "tsc -p .",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "bridge": "tsx src/bridge-cli.ts"
   },
   "dependencies": {
     "@figma-mcp-free/code-generator": "workspace:*",

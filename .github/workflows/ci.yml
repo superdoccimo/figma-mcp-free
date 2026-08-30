@@ -66,6 +66,9 @@ jobs:
       - name: Check structured fork policy
         run: pnpm run check:fork
 
+      - name: Check local plugin boundary
+        run: pnpm run check:plugin
+
       - name: Check package contents
         run: pnpm run pack:check
 

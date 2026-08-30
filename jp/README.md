@@ -1,51 +1,89 @@
 # figma-mcp-free 日本語ガイド
 
-Figma REST APIを使う、無料・read-only・quota-awareなMCPサーバー／CLIです。
+Figmaをread-onlyで扱う、quota-awareなMCPサーバー／CLI／ローカルPlugin bridgeです。
 
-Claude、Cursor、Codex、Windsurf、ClineなどからFigmaのファイルや選択ノードを読み取り、次の処理ができます。
+このプロジェクトには、用途の異なる2つの読み取り経路があります。
 
-- 選択レイヤーを実装向けの小さなJSONへ整理
-- 複数node IDを一括取得
-- React / Vue / Svelte / HTMLのスターターコード生成
-- W3C形式を意識したDesign Token出力
-- Figma URLと`node-id`の自動正規化
-- API制限を意識したcache、重複排除、timeout、Retry-After処理
-- fork差分の自動監査と本家への還流支援
+1. **Figma REST backend**
+   - file、node、component、frame、Design Tokenをheadlessに取得
+   - Personal Access Tokenが必要
+   - REST APIの利用枠を消費
+   - batch、cache、request結合、request budget、rate-limit診断に対応
 
-このプロジェクトはFigma公式MCP、Figma Dev Mode、Figma Pluginの代替を名乗るものではありません。REST modeは意図的にread-onlyであり、Figma上の要素を作成・移動・削除・公開できません。
+2. **Local Figma Plugin bridge**
+   - Figma Desktopで現在選択しているnodeを、ユーザーが明示的にCaptureしたときだけ取得
+   - Personal Access Tokenは不要
+   - REST APIの利用枠を消費しない
+   - localhost限定、認証付き、memory-only、read-only
+
+どちらの経路も、選択nodeの整理、React / Vue / Svelte / HTMLのstarter code生成へつなげられます。
+
+このプロジェクトはFigma公式MCP、Figma Dev Mode、Figma Community Pluginの代替を名乗るものではありません。Figma上の要素を作成・移動・削除・公開するwrite toolは提供していません。
 
 英語版は[ルートREADME](../README.md)です。
 
-## 重要な前提
+## 機能比較
 
-FigmaのREST API制限は、endpoint、seat、plan、対象ファイルが置かれたplanによって変わります。特に`GET file`と`GET file nodes`は利用枠が小さい場合があります。最新値は必ずFigma公式の[REST API Rate Limits](https://developers.figma.com/docs/rest-api/rate-limits/)で確認してください。
-
-そのため、このリポジトリは「何回でもAPIを呼ぶ」のではなく、次を設計原則にしています。
-
-1. 複数node IDは`get_nodes`でまとめる
-2. 同じrequestが同時に来たら1回へ束ねる
-3. MCP server内では短時間cacheする
-4. 大きなfile全体より、必要なnodeを狭く読む
-5. `Retry-After`が長いときは無駄な自動再試行をしない
-6. `doctor`でplan tierやrate-limit classを安全に診断する
+| 機能 | REST backend | Local Plugin bridge |
+| --- | --- | --- |
+| headless実行 | 可能 | 不可。Figma Desktopと明示captureが必要 |
+| Figma PAT | 必要 | 不要 |
+| REST quota | 消費する | 消費しない |
+| file全体 | 可能 | 不可 |
+| component metadata | 可能 | 不可 |
+| 現在選択中のnode | file ID / node IDで取得 | 明示captureで取得 |
+| CLI | 対応 | 対応 |
+| MCP | 対応 | 対応 |
+| Figmaへのwrite | 不可 | 不可 |
+| 保存 | bounded memory cache | 1件のmemory snapshotのみ |
+| remote server | Figma API | 不可。loopback限定 |
 
 ## 現在の状態
 
-- REST MCP server: 利用可能
-- CLI: 利用可能
-- offline generator demo: 利用可能
+- REST MCP server: 実装済み
+- REST / offline CLI: 実装済み
+- Local Plugin bridge server: 実装済み
+- Figma development Plugin: 実装済み
+- Plugin向けMCP / CLI tools: 実装済み
+- Node.js protocol test / static Plugin検査: 実装済み
+- Figma Desktop実機smoke test: release前の確認項目
 - npm公開: まだ行っていません
-- Figma Plugin bridge: [ROADMAP](../ROADMAP.md)で別backendとして準備中
-- write tool: 未提供
+- Figma Community公開: 行っていません
+- write tool: 提供していません
 
-現在はsource checkoutで使います。
+現在はsource checkoutで利用します。
+
+## なぜREST requestを節約するのか
+
+Figma REST APIの制限はendpoint、seat、plan、対象fileの所属先によって変わります。最新値はFigma公式の[REST API Rate Limits](https://developers.figma.com/docs/rest-api/rate-limits/)で確認してください。
+
+このリポジトリは「失敗するまでAPIを連打する」のではなく、次を設計原則にしています。
+
+1. 複数node IDはまとめて取得する
+2. 同一requestが同時発生したら1本へ束ねる
+3. 短時間の成功responseはbounded memory cacheで再利用する
+4. 必要なnodeだけを狭く読む
+5. 実network attemptへ上限を設定できるようにする
+6. 長時間の`Retry-After`やplan由来の429は無駄に再試行しない
+7. plan tier、rate-limit type、request IDを安全な診断情報として保持する
+8. 現在の選択nodeだけでよい場合はLocal Plugin bridgeを使い、REST quotaを使わない
 
 ## 1. 必要な環境
 
+共通:
+
 - Node.js 18以上
 - pnpm 9系
+- terminal
+
+REST backendを使う場合:
+
 - Figma Personal Access Token
-- MCP対応client、またはterminal
+
+Local Plugin bridgeを使う場合:
+
+- Figma Desktop
+- development Pluginを読み込める環境
 
 確認:
 
@@ -63,7 +101,7 @@ pnpm install --frozen-lockfile
 pnpm -r build
 ```
 
-## 3. tokenなしで試す
+## 3. Figmaにも接続せず試す
 
 ```bash
 pnpm --filter figma-mcp-free dev -- \
@@ -74,20 +112,24 @@ pnpm --filter figma-mcp-free dev -- \
 
 これはFigmaへ接続しません。clone、依存関係、build、generatorを安全に確認する最短ルートです。
 
-## 4. Personal Access Tokenの扱い
+# REST backend
 
-Figmaの設定画面で、対象ファイルを読むために必要な最小限のscopeを持つPATを作成してください。FigmaのUIやscope名は変更されることがあるため、作成画面の説明を優先してください。
+## 4. Personal Access Token
+
+Figmaの設定画面で、対象fileを読むために必要な最小限のscopeを持つPATを作成してください。FigmaのUIやscope名は変更される可能性があるため、作成画面の最新説明を優先してください。
 
 一時利用では環境変数を推奨します。
 
+Linux / macOS:
+
 ```bash
-export FIGMA_TOKEN="figd_..."
+export FIGMA_TOKEN="<YOUR_FIGMA_TOKEN>"
 ```
 
 Windows PowerShell:
 
 ```powershell
-$env:FIGMA_TOKEN = "figd_..."
+$env:FIGMA_TOKEN = "<YOUR_FIGMA_TOKEN>"
 ```
 
 local configへ保存する場合:
@@ -107,7 +149,7 @@ pnpm --filter figma-mcp-free dev -- init
 pnpm --filter figma-mcp-free dev -- config security
 ```
 
-`--token`をcommand lineへ直接書くとshell historyへ残る可能性があります。interactive入力か環境変数を使う方が安全です。
+`--token`をcommand lineへ直接書くとshell historyやprocess一覧へ残る可能性があります。interactive入力か環境変数を使う方が安全です。
 
 ## 5. Figma URL
 
@@ -118,7 +160,7 @@ https://www.figma.com/file/<FILE_ID>/...?node-id=1-2
 https://www.figma.com/design/<FILE_ID>/...?node-id=1-2
 ```
 
-`node-id=1-2`はAPI形式`1:2`へ自動変換します。
+数値形式の`node-id=1-2`はAPI形式`1:2`へ自動変換します。
 
 非対応:
 
@@ -126,7 +168,7 @@ https://www.figma.com/design/<FILE_ID>/...?node-id=1-2
 https://www.figma.com/slides/...
 ```
 
-対象frameやcomponentを選択し、Figmaの「Copy link」でnode ID付きURLを取得してください。
+対象frameやcomponentを選び、Figmaの「Copy link」でnode ID付きURLを取得してください。
 
 ## 6. doctor
 
@@ -170,7 +212,7 @@ pnpm --filter figma-mcp-free dev -- \
 - fills / strokes / shadows
 - text style
 - component properties
-- 子nodeのbounded summary
+- boundedな子node summary
 
 省略するもの:
 
@@ -183,7 +225,7 @@ pnpm --filter figma-mcp-free dev -- \
 
 ## 8. 複数nodeを一括取得
 
-個別に3回APIを呼ぶ代わりに、可能な範囲で1回へまとめます。
+個別に何度もAPIを呼ぶ代わりに、可能な範囲で1requestへまとめます。
 
 ```bash
 pnpm --filter figma-mcp-free dev -- \
@@ -193,8 +235,6 @@ pnpm --filter figma-mcp-free dev -- \
 
 MCPでは`get_nodes`を使います。
 
-入力例:
-
 ```json
 {
   "figmaUrl": "https://www.figma.com/design/FILE/Example",
@@ -202,6 +242,8 @@ MCPでは`get_nodes`を使います。
   "depth": 2
 }
 ```
+
+同一node IDはde-duplicateされ、同じURLへの同時requestも1本へ結合されます。
 
 ## 9. code generation
 
@@ -221,8 +263,6 @@ pnpm --filter figma-mcp-free dev -- \
   --framework react \
   --out-dir ./generated
 ```
-
-`generate-many`はnodeをbatch取得し、各nodeのfileとmanifest JSONを出します。
 
 対応framework:
 
@@ -249,169 +289,378 @@ pnpm --filter figma-mcp-free dev -- \
   --use-tokens ./tokens.json
 ```
 
-## 11. その他のCLI
+## 11. REST cacheとrequest budget
 
-fileを読む:
+MCP serverでは同じ`FigmaClient`を再利用し、短時間のresponseをmemory-onlyでcacheします。
 
-```bash
-pnpm --filter figma-mcp-free dev -- file "$FIGMA_URL" --depth 2
+主な設定:
+
+```text
+FIGMA_MCP_CACHE_TTL_MS=300000
+FIGMA_MCP_MAX_CACHE_ENTRIES=128
+FIGMA_MCP_REQUEST_TIMEOUT_MS=20000
+FIGMA_MCP_MAX_RETRIES=2
+FIGMA_MCP_NODE_BATCH_SIZE=100
 ```
 
-frame一覧:
+TypeScriptからはhard request budgetも指定できます。
 
-```bash
-pnpm --filter figma-mcp-free dev -- frames "$FIGMA_URL" --depth 3
+```ts
+import { FigmaClient } from "@figma-mcp-free/figma-client";
+
+const client = new FigmaClient({
+  token: process.env.FIGMA_TOKEN!,
+  requestBudget: 6,
+  cacheTtlMs: 30_000
+});
 ```
 
-component検索:
+budgetは実network attemptを数えます。retryも消費します。cache hitと同時requestの結合は追加消費しません。
 
-```bash
-pnpm --filter figma-mcp-free dev -- \
-  components "$FIGMA_URL" \
-  --query Button \
-  --limit 20 \
-  --json
+# Local Figma Plugin bridge
+
+## 12. 何が違うのか
+
+Local Plugin bridgeは、現在Figma Desktopで選択しているnodeを、ユーザーがボタンを押した時だけ取得します。
+
+```text
+Figma selection
+  -> Capture & Send
+  -> JSON_REST_V1 export
+  -> authenticated localhost bridge
+  -> CLI / MCP
+  -> inspect / generate
 ```
 
-cacheを使わず最新値を取り直したい場合は、対応commandへ`--refresh`を付けます。
+特徴:
 
-## 12. MCP server
+- PAT不要
+- REST quotaを消費しない
+- selection changeだけでは送信しない
+- Figma documentへwriteしない
+- remote接続を許可しない
+- snapshotは1件だけmemoryへ保持
+- server停止時にtoken、session、snapshotが消える
+
+## 13. bridge serverを起動
+
+```bash
+pnpm --filter figma-mcp-free bridge -- serve
+```
+
+次が表示されます。
+
+- loopback URL
+- random session ID
+- pairing token
+
+pairing tokenは秘密情報です。terminalを開いたままにしてください。
+
+上限を厳しくする例:
+
+```bash
+pnpm --filter figma-mcp-free bridge -- serve \
+  --max-body-mb 5 \
+  --max-selections 10 \
+  --max-nodes 2000 \
+  --max-depth 32 \
+  --request-timeout 5000
+```
+
+## 14. Figma development Pluginを作る
+
+Figma Desktopでdevelopment Pluginを1回作成し、Figmaが発行した数値IDを取得します。
+
+```bash
+node plugins/local-bridge/create-manifest.mjs <FIGMA_GENERATED_PLUGIN_ID> [BRIDGE_PORT]
+```
+
+`BRIDGE_PORT`は省略時`3845`です。bridge serverを別portで起動する場合は、同じportを指定します。
+
+```bash
+node plugins/local-bridge/create-manifest.mjs <FIGMA_GENERATED_PLUGIN_ID> 49152
+```
+
+生成された次のfileをdevelopment Pluginとしてimportします。
+
+```text
+plugins/local-bridge/manifest.json
+```
+
+`manifest.json`はgit管理しません。生成されたmanifestが許可する通信先は、指定したportの次の2つだけです。
+
+```text
+http://127.0.0.1:<PORT>
+http://localhost:<PORT>
+```
+
+remote hostやwildcard domainは追加しないでください。
+
+## 15. pairingとcapture
+
+1. development Pluginを開く
+2. bridge URLを貼る
+3. pairing tokenを貼る
+4. `Test connection`を押す
+5. Figma上でnodeを選ぶ
+6. `Capture & Send`を押す
+
+selectionを変更しただけでは、node本文は送信されません。
+
+Plugin UIはtokenを保存しません。
+
+- `localStorage`なし
+- `sessionStorage`なし
+- `indexedDB`なし
+- Figma `clientStorage`なし
+- file書き込みなし
+
+## 16. bridge CLI
+
+環境変数を使います。
+
+Linux / macOS:
+
+```bash
+export FIGMA_PLUGIN_BRIDGE_URL=http://127.0.0.1:3845
+export FIGMA_PLUGIN_BRIDGE_TOKEN='<PAIRING_TOKEN>'
+```
+
+Windows PowerShell:
+
+```powershell
+$env:FIGMA_PLUGIN_BRIDGE_URL = "http://127.0.0.1:3845"
+$env:FIGMA_PLUGIN_BRIDGE_TOKEN = "<PAIRING_TOKEN>"
+```
+
+状態確認:
+
+```bash
+pnpm --filter figma-mcp-free bridge -- status
+```
+
+snapshot全体:
+
+```bash
+pnpm --filter figma-mcp-free bridge -- current
+```
+
+1件をbounded contextへ整理:
+
+```bash
+pnpm --filter figma-mcp-free bridge -- \
+  inspect --index 0 --depth 2 --max-children 20
+```
+
+starter code生成:
+
+```bash
+pnpm --filter figma-mcp-free bridge -- \
+  generate --index 0 --framework react
+```
+
+snapshot削除:
+
+```bash
+pnpm --filter figma-mcp-free bridge -- clear
+```
+
+`--token`へ直接書くとshell historyへ残る可能性があるため、環境変数を推奨します。
+
+## 17. Plugin向けMCP設定
+
+bridge tokenはMCP processの環境変数へ入れます。AIから見えるtool引数へは出しません。
+
+```json
+{
+  "mcpServers": {
+    "figma-mcp-free": {
+      "transport": "stdio",
+      "command": "node",
+      "args": ["./packages/mcp-server/dist/index.js"],
+      "env": {
+        "FIGMA_PLUGIN_BRIDGE_URL": "http://127.0.0.1:3845",
+        "FIGMA_PLUGIN_BRIDGE_TOKEN": "<PAIRING_TOKEN>"
+      }
+    }
+  }
+}
+```
+
+Plugin tools:
+
+| Tool | 用途 |
+| --- | --- |
+| `get_plugin_bridge_status` | sessionとsnapshot状態を確認 |
+| `list_current_selections` | node全文を取る前にindex、ID、name、typeだけ確認 |
+| `get_current_selection` | 1件のcaptured node全文を取得 |
+| `inspect_current_selection` | REST quotaなしでbounded contextを生成 |
+| `generate_current_selection` | REST quotaなしでstarter codeを生成 |
+
+REST toolsは引き続き`FIGMA_TOKEN`を使います。Plugin bridgeが失敗したときにRESTへ勝手にfallbackすることはありません。RESTが失敗したときにPluginへ切り替えることもありません。
+
+## 18. Local bridgeの安全境界
+
+複数の防御を重ねています。
+
+- loopback-only bind
+- remote socket addressの検証
+- Host headerの検証
+- DNS rebindingを想定した拒否
+- 32文字以上512文字以下のbearer token
+- timing-safe token comparison
+- redirect拒否
+- URL内credential、path、query、fragment拒否
+- 1件のmemory-only snapshot
+- `Cache-Control: no-store`
+- request body、selection数、node数、depth、header数、timeoutの上限
+- snapshot POSTは`application/json`のみ
+- non-loopback escape hatchなし
+- static検査でFigma write APIを拒否
+
+Figma Pluginからlocalhostへ通信するため、bridge responseはwildcard CORSを使います。そのため、pairing token、loopback transport、remote address、Host validation、redirect拒否を認証境界として扱います。
+
+pairing tokenを次へ貼らないでください。
+
+- Webサイト
+- 公開issue
+- screenshot
+- X投稿
+- committed config
+- shell history
+- telemetry
+
+漏れた可能性がある場合はserverを再起動してください。tokenとsession IDが新しくなります。
+
+# MCP全体
+
+## 19. MCP server起動
 
 ```bash
 pnpm -r build
 node packages/mcp-server/dist/index.js
 ```
 
-設定例:
+REST tools:
 
-- [Codex](../examples/codex-config/mcp.json)
-- [Cursor](../examples/cursor-config/mcp.json)
+- `get_file`
+- `get_nodes`
+- `inspect_selection`
+- `get_components`
+- `list_frames`
+- `export_tokens`
+- `generate_code`
+- `get_cache_stats`
+- `clear_cache`
 
-公開tools:
+Plugin tools:
 
-| Tool | 用途 |
-| --- | --- |
-| `get_file` | file取得 |
-| `get_nodes` | node一括取得 |
-| `inspect_selection` | 選択nodeのcompact context |
-| `get_components` | component metadata |
-| `list_frames` | frame一覧 |
-| `export_tokens` | token抽出 |
-| `generate_code` | starter code生成 |
-| `get_cache_stats` | cache / retry / network統計 |
-| `clear_cache` | memory cache削除 |
+- `get_plugin_bridge_status`
+- `list_current_selections`
+- `get_current_selection`
+- `inspect_current_selection`
+- `generate_current_selection`
 
-環境変数:
+既存REST tool名と入力は維持し、Plugin toolは追加として分離しています。
 
-| 変数 | default | 内容 |
-| --- | ---: | --- |
-| `FIGMA_MCP_CACHE_TTL_MS` | `300000` | memory cache時間 |
-| `FIGMA_MCP_MAX_CACHE_ENTRIES` | `128` | 最大cache entry |
-| `FIGMA_MCP_REQUEST_TIMEOUT_MS` | `20000` | 1 attemptのtimeout |
-| `FIGMA_MCP_MAX_RETRIES` | `2` | transient retry回数 |
-| `FIGMA_MCP_NODE_BATCH_SIZE` | `100` | 1 requestのnode上限 |
+# Forkと開発
 
-cacheはmemory-onlyで、process終了時に消えます。private design dataをdisk cacheへ自動保存しません。
+## 20. fork対応
 
-## 13. fork対応
-
-forkは単なるcopyではなく、改善が生まれる場所として扱います。
+このrepositoryはforkをfirst-classに扱います。
 
 ```bash
-git remote add upstream https://github.com/superdoccimo/figma-mcp-free.git
-git fetch upstream
-git switch main
-git merge --ff-only upstream/main
+pnpm run check:fork
+pnpm run fork:audit
 ```
 
-fork network監査:
+fork auditはread-onlyです。
 
-```bash
-GITHUB_TOKEN=... node tools/audit-forks.mjs --repo owner/repository
-```
+- 公開forkを列挙
+- upstreamとの差分を比較
+- forkだけにあるcommitを検出
+- compare errorを記録
+- forkへpushしない
+- issueを自動作成しない
+- mergeしない
 
-GitHub Actionsの`Fork intelligence` workflowはread-onlyです。forkへpushしたり、勝手にmergeしたり、issueを作ったりしません。
+fork由来の改善を採用する場合は、source repository、commit、author、licenseを確認し、attributionを残します。
 
-詳細: [Forks, downstreams, and contribution flow](../docs/forks.md)
+## 21. 検証
 
-実際にforkから発見したPAT permission修正を本家へ取り込み、atomic writeとdoctor検査まで拡張しています。由来とcreditは[CHANGELOG](../CHANGELOG.md)に残しています。
-
-## 14. security
-
-絶対に公開しないもの:
-
-- PAT
-- private Figma file ID
-- private raw API response
-- private `inspect_selection` output
-- private design textやlayer name
-
-Gitへ追加しない例:
-
-```gitignore
-.env
-.env.*
-*.log
-node_modules/
-```
-
-Figma image APIのURLは期限付きになることがあります。production assetは自分のrepository、CDN、object storageへexportして管理してください。
-
-脆弱性報告はpublic issueではなく[SECURITY.md](../SECURITY.md)に従ってください。
-
-## 15. 開発と検証
+complete gate:
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm run check
-pnpm run pack:check
+pnpm check
+git diff --check
 ```
 
-CIでは以下を確認します。
+`pnpm check`には次が含まれます。
 
 - build
 - typecheck
-- unit / fixture test
+- unit / fixture tests
 - offline smoke
-- secret pattern
-- fork portability
-- package contents
-- Node.js 18 / 20 / 22
+- secret pattern check
+- owner-neutral portability check
+- structured fork policy check
+- Local Plugin boundary check
+- package content check
 
-## 16. AIへの依頼テンプレート
+CIはUbuntuでNode.js 18・20・22、WindowsとmacOSでNode.js 22のcomplete gateを実行します。
 
-```text
-このFigma nodeを実装してください。
+## 22. 実機でしか確認できないこと
 
-Figma URL:
-https://www.figma.com/design/<FILE_ID>/Example?node-id=1-2
+CIは次を自動確認できます。
 
-取得方針:
-- 最初にinspect_selectionを使う
-- 複数nodeが必要ならget_nodesでbatchする
-- file全体は必要な場合だけdepthを付けて読む
-- API rate limitを考慮し、同じrequestを繰り返さない
+- Node.js bridge protocol
+- authentication
+- Host validation
+- request limit
+- MCP schema
+- package export
+- Plugin sourceのsyntax
+- Figma write APIの検出
+- credential persistence pattern
 
-実装先:
-src/components/Card.tsx
+ただし、CIはFigma Desktopを操作できません。
 
-要件:
-- TypeScript
-- responsive
-- keyboard accessibility
-- 既存Design Tokenを優先
-- lint / test / buildを実行
-- Figmaへ書き込まない
-```
+release-readyとする前に、exact candidate commitで次の実機確認が必要です。
+
+1. development Plugin import
+2. bridge pairing
+3. selection capture
+4. status
+5. list
+6. inspect
+7. generate
+8. clear
+9. server再起動後のtoken / session rotation
+
+非機密のsample fileで証跡を残してください。
+
+## 23. 現在の制限
+
+- Figmaへwriteできません
+- Figma Communityへ公開していません
+- npmへ公開していません
+- Plugin bridgeはremote serverとして使えません
+- whole-file取得はREST backendのみです
+- component metadataはREST backendのみです
+- `/slides`はREST pipelineで非対応です
+- code generationはstarter codeです
+- 大きすぎるselectionや深すぎるtreeは意図的に拒否します
+- Images API URLは一時的であり、永続assetとしてcommitしないでください
 
 ## 関連資料
 
-- [English README](../README.md)
+- [ルートREADME](../README.md)
+- [Local Plugin bridge](../docs/local-plugin-bridge.md)
 - [Architecture](../docs/architecture.md)
-- [Quickstart](../docs/quickstart.md)
 - [Troubleshooting](../docs/troubleshooting.md)
 - [Fork support](../docs/forks.md)
+- [Security](../SECURITY.md)
 - [Roadmap](../ROADMAP.md)
 - [Changelog](../CHANGELOG.md)
-
-この文書は2026年のFigma API制限と現行repository実装に合わせて再構成しています。価格、plan、seat、API limitは変わるため、数値を固定的な約束として扱わず公式documentationを確認してください。
+- [Contributing](../CONTRIBUTING.md)
