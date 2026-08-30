@@ -17,7 +17,7 @@ jobs:
   verify:
     name: verify (${{ matrix.node-version }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -72,6 +72,12 @@ jobs:
       - name: Check package contents
         run: pnpm run pack:check
 
+      - name: Stage standalone package
+        run: pnpm run dist:stage
+
+      - name: Clean-install standalone npm candidate
+        run: pnpm run dist:smoke
+
       - name: Check pull request whitespace
         if: github.event_name == 'pull_request'
         run: git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
@@ -79,7 +85,7 @@ jobs:
   cross-platform:
     name: verify (${{ matrix.os }}, 22.x)
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -109,3 +115,6 @@ jobs:
 
       - name: Run complete repository checks
         run: pnpm check
+
+      - name: Clean-install standalone npm candidate
+        run: pnpm run dist:smoke
