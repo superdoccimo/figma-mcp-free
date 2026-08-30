@@ -6,7 +6,7 @@ on:
       - chore/post-merge-security-and-fork-audit-20260830
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: dependency-refresh-${{ github.ref }}
@@ -18,10 +18,10 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Checkout
+      - name: Checkout branch
         uses: actions/checkout@v7
         with:
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -69,6 +69,9 @@ jobs:
 
           pnpm install --no-frozen-lockfile
           pnpm dedupe
+
+      - name: Remove the one-shot generator before repository checks
+        run: git rm .github/workflows/dependency-refresh-artifact.yml
 
       - name: Record resolved security-sensitive dependencies
         shell: bash
@@ -124,3 +127,14 @@ jobs:
             echo "Refreshed dependency gate failed: audit=${AUDIT_OUTCOME}, checks=${CHECKS_OUTCOME}" >&2
             exit 1
           fi
+
+      - name: Commit verified dependency refresh
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json packages/mcp-server/package.json pnpm-lock.yaml
+          git diff --cached --check
+          git commit -m 'chore(deps): resolve all audited advisories' \
+            -m 'Upgrade the MCP SDK, pin patched transitive resolutions, preserve the generated lockfile, and remove the one-shot dependency generator after audit and the complete repository check both pass.'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
