@@ -48,7 +48,7 @@
     "commander": "^12"
   },
   "devDependencies": {
-    "@types/node": "^18",
+    "@types/node": "^26",
     "typescript": "^5.4",
     "tsx": "^4"
   }
