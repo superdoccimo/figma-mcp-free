@@ -1,0 +1,92 @@
+name: Dependency refresh artifact
+
+on:
+  push:
+    branches:
+      - chore/post-merge-security-and-fork-audit-20260830
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-refresh-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install current lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Upgrade the maintained MCP v1 SDK
+        run: pnpm --filter @figma-mcp-free/server add '@modelcontextprotocol/sdk@^1.30.0'
+
+      - name: Record resolved security-sensitive dependencies
+        shell: bash
+        run: |
+          {
+            echo '# Dependency resolution'
+            echo
+            pnpm --filter @figma-mcp-free/server why @modelcontextprotocol/sdk || true
+            pnpm --filter @figma-mcp-free/server why hono || true
+            pnpm --filter @figma-mcp-free/server why fast-uri || true
+            pnpm --filter @figma-mcp-free/server why ip-address || true
+          } | tee dependency-resolution.txt
+
+      - name: Audit refreshed lockfile
+        id: audit
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm audit --audit-level high --json | tee dependency-audit.json
+
+      - name: Run complete repository checks
+        id: checks
+        continue-on-error: true
+        run: pnpm check
+
+      - name: Upload refreshed dependency files
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dependency-refresh-${{ github.sha }}
+          path: |
+            packages/mcp-server/package.json
+            pnpm-lock.yaml
+            dependency-audit.json
+            dependency-resolution.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce refreshed dependency gates
+        if: always()
+        shell: bash
+        env:
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+          CHECKS_OUTCOME: ${{ steps.checks.outcome }}
+        run: |
+          if [[ "${AUDIT_OUTCOME}" != success || "${CHECKS_OUTCOME}" != success ]]; then
+            echo "Refreshed dependency gate failed: audit=${AUDIT_OUTCOME}, checks=${CHECKS_OUTCOME}" >&2
+            exit 1
+          fi
