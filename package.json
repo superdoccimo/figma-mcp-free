@@ -20,9 +20,10 @@
     "check:secrets": "node tools/check-secrets.mjs",
     "check:portability": "node tools/check-portability.mjs",
     "check:plugin": "node tools/check-plugin.mjs",
+    "check:docs": "node tools/check-doc-claims.mjs",
     "pack:check": "node tools/check-packages.mjs",
     "fork:audit": "node tools/audit-forks.mjs",
-    "check": "pnpm run build && pnpm run typecheck && pnpm run test && pnpm run smoke && pnpm run check:secrets && pnpm run check:portability && pnpm run check:plugin",
+    "check": "pnpm run build && pnpm run typecheck && pnpm run test && pnpm run smoke && pnpm run check:secrets && pnpm run check:portability && pnpm run check:plugin && pnpm run check:docs",
     "cli": "pnpm --filter figma-mcp-free dev",
     "bridge": "pnpm --filter figma-mcp-free bridge",
     "mcp": "pnpm --filter @figma-mcp-free/server dev"
