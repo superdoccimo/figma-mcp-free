@@ -5,8 +5,13 @@ import {
   inspectSelection,
   resolveFigmaReference,
   resolveInspectSelectionLimits,
+  type FigmaNode,
   type FigmaRequestOptions
 } from "@figma-mcp-free/figma-client";
+import {
+  PluginBridgeClient,
+  type PluginBridgeSnapshot
+} from "@figma-mcp-free/figma-client/plugin-bridge";
 import {
   toDesignTokens,
   buildCssVarIndex,
@@ -21,13 +26,18 @@ import { getToken as getConfigToken } from "@figma-mcp-free/config";
 import {
   cacheStatsInputSchema,
   clearCacheInputSchema,
+  currentSelectionInputSchema,
   exportTokensInputSchema,
   generateCodeInputSchema,
+  generateCurrentSelectionInputSchema,
   getComponentsInputSchema,
   getFileInputSchema,
   getNodesInputSchema,
+  inspectCurrentSelectionInputSchema,
   inspectSelectionInputSchema,
-  listFramesInputSchema
+  listCurrentSelectionsInputSchema,
+  listFramesInputSchema,
+  pluginBridgeStatusInputSchema
 } from "./tool-schemas.js";
 
 function getToken(): string {
@@ -60,6 +70,27 @@ function getClient(): FigmaClient {
   return sharedClient;
 }
 
+let sharedBridgeClient: PluginBridgeClient | undefined;
+let sharedBridgeIdentity: string | undefined;
+
+function getBridgeClient(): PluginBridgeClient {
+  const token = process.env.FIGMA_PLUGIN_BRIDGE_TOKEN?.trim();
+  if (!token) {
+    throw new Error("FIGMA_PLUGIN_BRIDGE_TOKEN is not set. Start figma-mcp-free-bridge serve and copy its pairing token into the MCP environment.");
+  }
+  const baseUrl = process.env.FIGMA_PLUGIN_BRIDGE_URL?.trim() || "http://127.0.0.1:3845";
+  const identity = `${baseUrl}\u0000${token}`;
+  if (!sharedBridgeClient || sharedBridgeIdentity !== identity) {
+    sharedBridgeIdentity = identity;
+    sharedBridgeClient = new PluginBridgeClient({
+      baseUrl,
+      token,
+      timeoutMs: envInteger("FIGMA_PLUGIN_BRIDGE_TIMEOUT_MS", 10000)
+    });
+  }
+  return sharedBridgeClient;
+}
+
 function requestOptions(refresh?: boolean): FigmaRequestOptions {
   return refresh ? { cache: "reload" } : {};
 }
@@ -74,6 +105,10 @@ function resolveInput(input: FigmaInput) {
 
 function jsonContent(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
+}
+
+function textContent(value: string) {
+  return { content: [{ type: "text" as const, text: value }] };
 }
 
 function buildGenerateOptions(tokens: unknown, varPrefix?: string): GenerateOptions | undefined {
@@ -98,6 +133,22 @@ function buildGenerateOptions(tokens: unknown, varPrefix?: string): GenerateOpti
       shadowKey(Boolean(inset), dx, dy, blur, spread, color ? normalizeHex(color) : undefined)
     ]
   };
+}
+
+function currentSelection(snapshot: PluginBridgeSnapshot, index = 0): {
+  snapshot: PluginBridgeSnapshot;
+  index: number;
+  selection: { id: string; name: string; type: string; document: FigmaNode };
+} {
+  const selection = snapshot.selections[index];
+  if (!selection) {
+    throw new Error(`Selection index ${index} is outside the captured range 0-${Math.max(0, snapshot.selections.length - 1)}.`);
+  }
+  return { snapshot, index, selection };
+}
+
+function pluginFileId(snapshot: PluginBridgeSnapshot): string {
+  return `plugin:${snapshot.sessionId}`;
 }
 
 async function main() {
@@ -212,9 +263,94 @@ async function main() {
       if (!ref.nodeId) throw new Error("nodeId is required unless figmaUrl includes ?node-id=...");
       const node = await getClient().getNode(ref.fileId, ref.nodeId, undefined, requestOptions(refresh));
       if (!node) throw new Error(`Node not found: ${ref.nodeId}`);
-      const options = buildGenerateOptions(tokens, varPrefix);
-      const code = generateCode(node, framework as Framework, options);
-      return { content: [{ type: "text" as const, text: code }] };
+      return textContent(generateCode(node, framework as Framework, buildGenerateOptions(tokens, varPrefix)));
+    }
+  );
+
+  server.registerTool(
+    "get_plugin_bridge_status",
+    {
+      description: "Check the authenticated loopback bridge used by the Figma development plugin. This does not require a Figma PAT.",
+      inputSchema: pluginBridgeStatusInputSchema
+    },
+    async () => jsonContent(await getBridgeClient().health())
+  );
+
+  server.registerTool(
+    "list_current_selections",
+    {
+      description: "List lightweight summaries of nodes in the latest explicit local-plugin capture before requesting a full document.",
+      inputSchema: listCurrentSelectionsInputSchema
+    },
+    async () => {
+      const snapshot = await getBridgeClient().getSnapshot();
+      return jsonContent({
+        source: snapshot.source,
+        sessionId: snapshot.sessionId,
+        capturedAt: snapshot.capturedAt,
+        fileName: snapshot.fileName,
+        pageName: snapshot.pageName,
+        selections: snapshot.selections.map((selection, index) => ({
+          index,
+          id: selection.id,
+          name: selection.name,
+          type: selection.type
+        }))
+      });
+    }
+  );
+
+  server.registerTool(
+    "get_current_selection",
+    {
+      description: "Read one node from the latest selection snapshot captured by the read-only local Figma plugin bridge.",
+      inputSchema: currentSelectionInputSchema
+    },
+    async ({ index }) => {
+      const entry = currentSelection(await getBridgeClient().getSnapshot(), index ?? 0);
+      return jsonContent({
+        source: entry.snapshot.source,
+        sessionId: entry.snapshot.sessionId,
+        capturedAt: entry.snapshot.capturedAt,
+        fileName: entry.snapshot.fileName,
+        pageName: entry.snapshot.pageName,
+        selectionCount: entry.snapshot.selections.length,
+        index: entry.index,
+        selection: entry.selection
+      });
+    }
+  );
+
+  server.registerTool(
+    "inspect_current_selection",
+    {
+      description: "Build compact implementation context from the latest local-plugin selection without using Figma REST quota.",
+      inputSchema: inspectCurrentSelectionInputSchema
+    },
+    async ({ index, depth, maxChildren }) => {
+      const entry = currentSelection(await getBridgeClient().getSnapshot(), index ?? 0);
+      const limits = resolveInspectSelectionLimits({ depth, maxChildren });
+      return jsonContent(inspectSelection(entry.selection.document, {
+        fileId: pluginFileId(entry.snapshot),
+        nodeId: entry.selection.id,
+        ...limits
+      }));
+    }
+  );
+
+  server.registerTool(
+    "generate_current_selection",
+    {
+      description: "Generate starter UI code from the latest local-plugin selection without using Figma REST quota.",
+      inputSchema: generateCurrentSelectionInputSchema
+    },
+    async ({ index, framework, tokens, varPrefix }) => {
+      const entry = currentSelection(await getBridgeClient().getSnapshot(), index ?? 0);
+      return textContent(generateCode(
+        entry.selection.document,
+        framework as Framework,
+        buildGenerateOptions(tokens, varPrefix)
+      ));
     }
   );
 

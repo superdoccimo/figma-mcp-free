@@ -3,6 +3,7 @@
 Start here:
 
 - [Quickstart](quickstart.md)
+- [Local Figma Plugin bridge](local-plugin-bridge.md)
 - [Troubleshooting](troubleshooting.md)
 - [Architecture](architecture.md)
 - [Forking and upstream contribution](forking.md)
@@ -19,10 +20,15 @@ Start here:
 
 ## Current capability statement
 
-The production backend is a read-only Figma REST client. It supports CLI and MCP workflows, selected-layer inspection, design-token extraction, starter code generation, node batching, request coalescing, bounded memory caching, request budgets and structured rate-limit diagnostics.
+Two explicit read paths are implemented:
 
-A local Figma Plugin bridge is an architectural direction, not a released capability. See [architecture.md](architecture.md) and [the roadmap](../ROADMAP.md) for its required security and test boundaries.
+1. A quota-aware Figma REST backend for CLI and MCP workflows, selected-layer inspection, design-token extraction, starter code generation, node batching, request coalescing, bounded memory caching, request budgets, and structured rate-limit diagnostics.
+2. An authenticated, loopback-only Figma development-plugin bridge for explicit current-selection capture without a PAT or REST request.
+
+The local bridge remains read-only, memory-only, bounded, and opt-in. It does not silently replace REST calls, expose its token to model-visible schemas, or add Figma write capability.
+
+The Node.js protocol and static Plugin boundary are covered by automated Linux, Windows, and macOS checks. A real Figma Desktop smoke test is still required before calling a release candidate release-ready.
 
 ## Documentation rule
 
-Documentation must describe implemented and tested behavior. Package installation commands, client compatibility, Figma plan allowances, plugin capabilities and write operations must not be advertised before they are verifiable.
+Documentation must describe implemented and tested behavior. Package installation commands, client compatibility, Figma plan allowances, plugin capabilities, and write operations must not be advertised before they are verifiable.
