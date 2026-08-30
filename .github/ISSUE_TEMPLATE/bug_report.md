@@ -1,27 +1,60 @@
 ---
 name: Bug report
-about: Report a problem to help us improve
+about: Report reproducible incorrect behavior without exposing private Figma data
+title: "[Bug] "
 labels: bug
+assignees: ""
 ---
 
-## Description
-A clear and concise description of the bug.
+## Summary
 
-## Steps To Reproduce
-1. ...
-2. ...
+Describe what happened and what you expected.
 
-## Expected behavior
-What you expected to happen.
+## Reproduction
 
-## Actual behavior
-What actually happened.
+Provide the smallest sequence that reproduces the problem. Replace real file IDs, node text and tokens with placeholders.
+
+```text
+commands or MCP tool calls
+```
 
 ## Environment
-- Node version:
-- OS:
-- Command used:
+
+- Operating system:
+- Node.js:
+- pnpm:
+- MCP client and version, when applicable:
+- Repository commit or release:
+- Upstream or fork repository:
+
+## Diagnostics
+
+Does the offline demo pass?
+
+```bash
+pnpm check
+```
+
+For a Figma URL, include sanitized output from:
+
+```bash
+pnpm --filter figma-mcp-free dev -- doctor "<SANITIZED_FIGMA_URL>" --json
+```
+
+Do not include a token, real private file ID, private layer names, text content or raw private API response.
+
+## Error
+
+Include the error class, status and sanitized structured metadata. For a `429`, include plan/rate-limit fields only if returned by Figma and safe to share.
+
+## Regression
+
+- Did this work before?
+- First known failing commit or version:
+- Does it also fail on current upstream `main`?
 
 ## Additional context
-Logs, screenshots, or anything helpful.
 
+A screenshot is optional and must not expose private designs or credentials.
+
+For a security or token-exposure issue, stop and follow `SECURITY.md` instead of submitting this public report.
