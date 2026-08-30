@@ -1,18 +1,27 @@
-# figma-mcp-free
+# Documentation Index
 
-Free, open MCP server alternative to Figma Dev Mode.
+Start here:
 
-- Protocol: MCP STDIO
-- API: Figma REST (Personal Access Token)
-- Language: TypeScript / Node 18+
+- [Quickstart](quickstart.md)
+- [Troubleshooting](troubleshooting.md)
+- [Architecture](architecture.md)
+- [Forking and upstream contribution](forking.md)
+- [Release policy](releasing.md)
+- [Why this exists](why-this-exists.md)
+- [Demo runbook](demo/runbook.md)
+- [Launch and release checklist](launch-checklist.md)
+- [Project roadmap](../ROADMAP.md)
+- [Governance](../GOVERNANCE.md)
+- [Support](../SUPPORT.md)
+- [Security](../SECURITY.md)
+- [Japanese README](../jp/README.md)
 
-## Document navigation
+## Current capability statement
 
-- [Quickstart](./quickstart.md) – English setup and CLI walkthrough.
-- [Troubleshooting](./troubleshooting.md) – Link formats, node IDs, temporary images, token scopes, rate limits, and MCP client fixes.
-- [Marketing outlines](./marketing/) – Draft story arcs for launch content.
-- [Why this exists](./why-this-exists.md) – Problem framing for enclosure strategies.
-- [Launch checklist](./launch-checklist.md) – Tasks to complete before announcing the project.
-- [Assets](./assets/) – Stable README diagrams and public documentation images.
+The production backend is a read-only Figma REST client. It supports CLI and MCP workflows, selected-layer inspection, design-token extraction, starter code generation, node batching, request coalescing, bounded memory caching, request budgets and structured rate-limit diagnostics.
 
-Roadmap and deeper requirements still live in `figma_mcp_requirements.md` at the repo root.
+A local Figma Plugin bridge is an architectural direction, not a released capability. See [architecture.md](architecture.md) and [the roadmap](../ROADMAP.md) for its required security and test boundaries.
+
+## Documentation rule
+
+Documentation must describe implemented and tested behavior. Package installation commands, client compatibility, Figma plan allowances, plugin capabilities and write operations must not be advertised before they are verifiable.
