@@ -10,10 +10,23 @@ const cli = join(process.cwd(), "packages", "cli", "dist", "index.js");
 
 function isolatedEnv(token) {
   const configHome = mkdtempSync(join(tmpdir(), "figma-mcp-free-test-"));
-  const env = { ...process.env, APPDATA: configHome, XDG_CONFIG_HOME: configHome };
+  const env = {
+    ...process.env,
+    HOME: configHome,
+    USERPROFILE: configHome,
+    APPDATA: configHome,
+    XDG_CONFIG_HOME: configHome
+  };
   if (token) env.FIGMA_TOKEN = token;
   else delete env.FIGMA_TOKEN;
   return { env, configHome };
+}
+
+function expectedConfigDir(configHome) {
+  if (process.platform === "darwin") {
+    return join(configHome, "Library", "Application Support", "figma-mcp-free");
+  }
+  return join(configHome, "figma-mcp-free");
 }
 
 test("doctor reports token state without exposing the token", () => {
@@ -65,7 +78,7 @@ test("stored PAT uses owner-only POSIX permissions and atomic JSON output", { sk
     const secret = "owner-only-token";
     const init = spawnSync(process.execPath, [cli, "init", "--token", secret], { encoding: "utf8", env });
     assert.equal(init.status, 0, init.stderr);
-    const dir = join(configHome, "figma-mcp-free");
+    const dir = expectedConfigDir(configHome);
     const path = join(dir, "config.json");
     assert.equal(statSync(dir).mode & 0o777, 0o700);
     assert.equal(statSync(path).mode & 0o777, 0o600);
