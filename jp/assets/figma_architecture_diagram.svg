@@ -1,171 +1,45 @@
-<svg viewBox="0 0 1080 400" xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 1080 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">figma-mcp-free dual-backend architecture</title>
+  <desc id="desc">MCP clientとterminalがquota-aware REST backendまたは認証付きLocal Figma Plugin Bridgeを使い、共通のinspection、token、starter-code処理へ接続する。</desc>
   <defs>
-    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#2d3436"/>
-    </marker>
-    <marker id="arrowhead-small" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
-      <polygon points="0 0, 8 2.5, 0 5" fill="#636e72"/>
+    <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0,0 10,4 0,8" fill="#475569"/>
     </marker>
   </defs>
-  
-  <!-- Background -->
-  <rect width="1080" height="400" fill="transparent"/>
-  
-  <!-- Title -->
-  <text x="540" y="30" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#2f3542" text-anchor="middle">
-    figma-mcp-free アーキテクチャ
-  </text>
-  
-  <!-- Left Section: Figma API -->
-  <rect x="40" y="60" width="200" height="280" fill="#f8f9fa" stroke="#6c5ce7" stroke-width="2" rx="12"/>
-  <rect x="50" y="70" width="180" height="40" fill="#6c5ce7" rx="6"/>
-  <text x="140" y="95" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="white" text-anchor="middle">
-    Figma API
-  </text>
-  
-  <!-- Figma API Components -->
-  <rect x="60" y="130" width="160" height="30" fill="#ddd6fe" rx="4"/>
-  <text x="140" y="150" font-family="Arial, sans-serif" font-size="12" fill="#333" text-anchor="middle">
-    Personal Access Token
-  </text>
-  
-  <rect x="60" y="170" width="160" height="30" fill="#ddd6fe" rx="4"/>
-  <text x="140" y="190" font-family="Arial, sans-serif" font-size="12" fill="#333" text-anchor="middle">
-    Files &amp; Components API
-  </text>
-  
-  <rect x="60" y="210" width="160" height="30" fill="#ddd6fe" rx="4"/>
-  <text x="140" y="230" font-family="Arial, sans-serif" font-size="12" fill="#333" text-anchor="middle">
-    Design Token API
-  </text>
-  
-  <rect x="60" y="250" width="160" height="30" fill="#ddd6fe" rx="4"/>
-  <text x="140" y="270" font-family="Arial, sans-serif" font-size="12" fill="#333" text-anchor="middle">
-    Assets Export API
-  </text>
-  
-  <text x="140" y="310" font-family="Arial, sans-serif" font-size="10" fill="#636e72" text-anchor="middle">
-    100% 無料
-  </text>
-  <text x="140" y="325" font-family="Arial, sans-serif" font-size="10" fill="#636e72" text-anchor="middle">
-    読み取り専用で十分
-  </text>
-  
-  <!-- Arrow 1 -->
-  <path d="M 250 200 L 290 200" stroke="#2d3436" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
-  <text x="270" y="190" font-family="Arial, sans-serif" font-size="10" fill="#636e72" text-anchor="middle">REST</text>
-  
-  <!-- Center Section: figma-mcp-free -->
-  <rect x="300" y="60" width="280" height="280" fill="#f8f9fa" stroke="#00b894" stroke-width="2" rx="12"/>
-  <rect x="310" y="70" width="260" height="40" fill="#00b894" rx="6"/>
-  <text x="440" y="95" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="white" text-anchor="middle">
-    figma-mcp-free
-  </text>
-  
-  <!-- CLI Tool -->
-  <rect x="320" y="130" width="100" height="60" fill="#55efc4" rx="6"/>
-  <text x="370" y="150" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#333" text-anchor="middle">
-    CLI Tool
-  </text>
-  <text x="370" y="165" font-family="Arial, sans-serif" font-size="10" fill="#333" text-anchor="middle">
-    init / sync
-  </text>
-  <text x="370" y="180" font-family="Arial, sans-serif" font-size="10" fill="#333" text-anchor="middle">
-    generate
-  </text>
-  
-  <!-- MCP Server -->
-  <rect x="450" y="130" width="110" height="60" fill="#55efc4" rx="6"/>
-  <text x="505" y="150" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#333" text-anchor="middle">
-    MCP Server
-  </text>
-  <text x="505" y="165" font-family="Arial, sans-serif" font-size="10" fill="#333" text-anchor="middle">
-    STDIO Protocol
-  </text>
-  <text x="505" y="180" font-family="Arial, sans-serif" font-size="10" fill="#333" text-anchor="middle">
-    Real-time Sync
-  </text>
-  
-  <!-- Design Token Generator -->
-  <rect x="320" y="210" width="100" height="60" fill="#55efc4" rx="6"/>
-  <text x="370" y="230" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#333" text-anchor="middle">
-    Token Gen
-  </text>
-  <text x="370" y="245" font-family="Arial, sans-serif" font-size="10" fill="#333" text-anchor="middle">
-    W3C Standard
-  </text>
-  <text x="370" y="260" font-family="Arial, sans-serif" font-size="10" fill="#333" text-anchor="middle">
-    CSS/Tailwind
-  </text>
-  
-  <!-- Code Generator -->
-  <rect x="450" y="210" width="110" height="60" fill="#55efc4" rx="6"/>
-  <text x="505" y="230" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#333" text-anchor="middle">
-    Code Gen
-  </text>
-  <text x="505" y="245" font-family="Arial, sans-serif" font-size="10" fill="#333" text-anchor="middle">
-    React/Vue/Svelte
-  </text>
-  <text x="505" y="260" font-family="Arial, sans-serif" font-size="10" fill="#333" text-anchor="middle">
-    TypeScript対応
-  </text>
-  
-  <text x="440" y="300" font-family="Arial, sans-serif" font-size="10" fill="#00b894" text-anchor="middle">
-    オープンソース
-  </text>
-  <text x="440" y="315" font-family="Arial, sans-serif" font-size="10" fill="#00b894" text-anchor="middle">
-    無料・無制限
-  </text>
-  
-  <!-- Arrow 2 -->
-  <path d="M 590 200 L 630 200" stroke="#2d3436" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
-  <text x="610" y="190" font-family="Arial, sans-serif" font-size="10" fill="#636e72" text-anchor="middle">MCP</text>
-  
-  <!-- Right Section: User Environment -->
-  <rect x="640" y="60" width="200" height="280" fill="#f8f9fa" stroke="#fd79a8" stroke-width="2" rx="12"/>
-  <rect x="650" y="70" width="180" height="40" fill="#fd79a8" rx="6"/>
-  <text x="740" y="95" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="white" text-anchor="middle">
-    開発環境
-  </text>
-  
-  <!-- Claude Code -->
-  <rect x="660" y="130" width="160" height="30" fill="#fab1e4" rx="4"/>
-  <text x="740" y="150" font-family="Arial, sans-serif" font-size="12" fill="#333" text-anchor="middle">
-    Claude Code
-  </text>
-  
-  <!-- Codex -->
-  <rect x="660" y="170" width="160" height="30" fill="#fab1e4" rx="4"/>
-  <text x="740" y="190" font-family="Arial, sans-serif" font-size="12" fill="#333" text-anchor="middle">
-    Claude Codex
-  </text>
-  
-  <!-- Cursor -->
-  <rect x="660" y="210" width="160" height="30" fill="#fab1e4" rx="4"/>
-  <text x="740" y="230" font-family="Arial, sans-serif" font-size="12" fill="#333" text-anchor="middle">
-    Cursor
-  </text>
-  
-  <!-- Local Projects -->
-  <rect x="660" y="250" width="160" height="30" fill="#fab1e4" rx="4"/>
-  <text x="740" y="270" font-family="Arial, sans-serif" font-size="12" fill="#333" text-anchor="middle">
-    ローカルプロジェクト
-  </text>
-  
-  <text x="740" y="310" font-family="Arial, sans-serif" font-size="10" fill="#fd79a8" text-anchor="middle">
-    AI連携最適化
-  </text>
-  <text x="740" y="325" font-family="Arial, sans-serif" font-size="10" fill="#fd79a8" text-anchor="middle">
-    どこでも動作
-  </text>
-  
-  <!-- Arrow 3 (Feedback loop) -->
-  <path d="M 630 240 L 590 240" stroke="#636e72" stroke-width="1" stroke-dasharray="3,3" fill="none" marker-end="url(#arrowhead-small)"/>
-  <text x="610" y="255" font-family="Arial, sans-serif" font-size="9" fill="#636e72" text-anchor="middle">フィードバック</text>
-  
-  <!-- Bottom banner -->
-  <rect x="40" y="360" width="800" height="30" fill="#2f3542" rx="6"/>
-  <text x="440" y="380" font-family="Arial, sans-serif" font-size="14" fill="white" text-anchor="middle">
-    Personal Access Token → 完全無料のDev Mode以上の機能
-  </text>
+  <rect width="1080" height="560" fill="#f8fafc"/>
+  <text x="540" y="45" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="30" font-weight="700" fill="#0f172a" text-anchor="middle">figma-mcp-free Architecture</text>
+  <text x="540" y="72" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="14" fill="#475569" text-anchor="middle">独立したread backend、共通の実装pipeline、明確なsecurity boundary</text>
+
+  <rect x="300" y="98" width="480" height="68" rx="16" fill="#ffffff" stroke="#7c3aed" stroke-width="3"/>
+  <text x="540" y="126" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="19" font-weight="700" fill="#4c1d95" text-anchor="middle">AI coding client または terminal</text>
+  <text x="540" y="151" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="13" fill="#475569" text-anchor="middle">Claude • Cursor • Codex • Windsurf • Cline • local scripts</text>
+
+  <path d="M540 166 L540 196" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="355" y="202" width="370" height="64" rx="14" fill="#0f172a"/>
+  <text x="540" y="230" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="19" font-weight="700" fill="#ffffff" text-anchor="middle">Unified MCP server / CLI</text>
+  <text x="540" y="253" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="12" fill="#cbd5e1" text-anchor="middle">credentialはmodel-visible tool inputではなくprocess environmentから渡す</text>
+
+  <path d="M440 266 L290 302" stroke="#475569" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M640 266 L790 302" stroke="#475569" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+
+  <rect x="65" y="310" width="430" height="142" rx="18" fill="#ffffff" stroke="#2563eb" stroke-width="3"/>
+  <text x="280" y="342" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="22" font-weight="700" fill="#1d4ed8" text-anchor="middle">Quota-aware REST backend</text>
+  <text x="92" y="375" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="14" fill="#334155">• PAT認証とFigma URL解析</text>
+  <text x="92" y="399" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="14" fill="#334155">• node batch、cache、in-flight重複排除</text>
+  <text x="92" y="423" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="14" fill="#334155">• timeout、Retry-After、rate-limit診断</text>
+  <text x="92" y="447" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="12" fill="#64748b">URL、CI、headless、remote automation向け</text>
+
+  <rect x="585" y="310" width="430" height="142" rx="18" fill="#ffffff" stroke="#0f766e" stroke-width="3"/>
+  <text x="800" y="342" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="22" font-weight="700" fill="#0f766e" text-anchor="middle">Local Plugin backend</text>
+  <text x="612" y="375" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="14" fill="#334155">• JSON_REST_V1 selectionを明示capture</text>
+  <text x="612" y="399" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="14" fill="#334155">• loopbackでpairing-token認証</text>
+  <text x="612" y="423" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="14" fill="#334155">• boundedなmemory snapshot 1件</text>
+  <text x="612" y="447" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="12" fill="#64748b">Figma Desktopで現在開いているselection向け</text>
+
+  <path d="M280 452 L400 482" stroke="#475569" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M800 452 L680 482" stroke="#475569" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+
+  <rect x="210" y="488" width="660" height="56" rx="14" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+  <text x="540" y="514" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="17" font-weight="700" fill="#0f172a" text-anchor="middle">共通: compact inspector • Design Token • React/Vue/Svelte/HTML generator</text>
+  <text x="540" y="535" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="12" fill="#475569" text-anchor="middle">read-only default。将来のwrite機能は別toolと別reviewが必要。</text>
 </svg>
