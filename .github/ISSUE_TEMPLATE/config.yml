@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/superdoccimo/figma-mcp-free/security
+    about: Do not disclose tokens, private data, authentication bypasses or arbitrary execution in a public issue.
+  - name: Support and diagnostics guide
+    url: https://github.com/superdoccimo/figma-mcp-free/blob/main/SUPPORT.md
+    about: Run the offline checks and sanitize diagnostic output before reporting a problem.
