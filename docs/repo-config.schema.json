@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/superdoccimo/figma-mcp-free/blob/main/docs/repo-config.schema.json",
+  "title": "figma-mcp-free repository configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "upstreamRepository", "defaultBranch", "packageScope", "forkPolicy"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "upstreamRepository": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+    },
+    "defaultBranch": { "type": "string", "minLength": 1 },
+    "packageScope": { "type": "string", "pattern": "^@[A-Za-z0-9_.-]+$" },
+    "forkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtimeSourceMustBeOwnerNeutral",
+        "ciMustNotRequireSecrets",
+        "pullRequestTargetAllowed",
+        "publishingIsOptIn"
+      ],
+      "properties": {
+        "runtimeSourceMustBeOwnerNeutral": { "type": "boolean" },
+        "ciMustNotRequireSecrets": { "type": "boolean" },
+        "pullRequestTargetAllowed": { "type": "boolean" },
+        "publishingIsOptIn": { "type": "boolean" }
+      }
+    }
+  }
+}
