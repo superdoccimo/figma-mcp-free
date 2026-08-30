@@ -45,7 +45,7 @@
     "@figma-mcp-free/design-tokens": "workspace:*",
     "@figma-mcp-free/figma-client": "workspace:*",
     "@figma-mcp-free/config": "workspace:*",
-    "commander": "^12"
+    "commander": "^15"
   },
   "devDependencies": {
     "@types/node": "^18",
