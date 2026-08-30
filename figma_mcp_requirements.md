@@ -1,253 +1,479 @@
-# figma-mcp-free 要件定義書
+# figma-mcp-free 現行要件定義
 
-## 🎯 プロジェクト概要
+更新日: 2026-08-30  
+状態: 実装済み機能と今後のrelease gateを定義するcanonical document
 
-### プロジェクト名
-`figma-mcp-free` - Figma MCP Server Free Alternative
+## 1. プロジェクトの目的
 
-### 目的
-- **問題**: Figma公式のDev Mode MCP Serverが有料プラン限定
-- **解決**: MCPオープン規格を使った完全無料代替案の提供
-- **訴求**: オープンソースの力で企業の囲い込み戦略に対抗
+`figma-mcp-free`は、Figma designをAI coding clientやterminalから安全に読み、実装へ移すためのread-only toolkitです。
 
-### 訴求文案（メインメッセージ）
-```markdown
-⚠️ **知ってましたか？MCPは無料のオープン規格です**
-でもFigma公式は有料プラン限定にしています。
+目的は次の4点です。
 
-✅ **完全無料で同じことができます**
-Personal Access Tokenだけで、Dev Mode以上の機能を。
+1. Figma REST APIを使うheadless workflowを、batch、cache、timeout、診断付きで扱いやすくする
+2. Figma Desktopで現在選択しているnodeを、PATやREST callなしで明示的にcaptureできるLocal Plugin Bridgeを提供する
+3. RESTとLocal Pluginの出力を、同一のselection inspector、Design Token exporter、code generatorへ渡す
+4. forkで生まれた改善を発見し、creditとprovenanceを保ってupstreamへ還流できるOSS運用を作る
 
-🚀 **5分でセットアップ完了**
-```sh
-npx figma-mcp-free init
-# → Figma token入力 → 完了
+本projectは、Figma公式MCP、Figma Dev Mode、またはFigma Plugin API全体の完全代替を主張しません。公式toolと出力schema、権限、rate limit、editor integrationは異なります。
+
+## 2. 主要利用者
+
+- Figma designからReact、Vue、Svelte、HTMLのstarter codeを作りたいdeveloper
+- Claude、Cursor、Codex、Windsurf、Clineなどへ選択layerのcontextを渡したいdeveloper
+- Figma REST API callを節約したい個人、small team、CI operator
+- private design dataをdiskへ自動保存せず、localhost内で明示的に扱いたい利用者
+- forkを作り、自分の環境向けに改良したいOSS contributor
+
+## 3. 設計原則
+
+### 3.1 Read-only by default
+
+現行toolはFigma objectを作成、編集、移動、削除、公開しません。
+
+将来write capabilityを追加する場合も、既存read toolへ暗黙追加してはいけません。別tool名、明示的opt-in、narrow permission、実行後verification、専用security reviewを必須とします。
+
+### 3.2 Dual backend
+
+```text
+                               AI client / terminal
+                                        |
+                                 MCP server / CLI
+                                        |
+                    +-------------------+-------------------+
+                    |                                       |
+              REST backend                         Local Plugin backend
+                    |                                       |
+        quota-aware FigmaClient                 authenticated loopback bridge
+                    |                                       |
+          Figma REST API GET                    Figma JSON_REST_V1 export
+                    +-------------------+-------------------+
+                                        |
+                     inspector / tokens / code generator
 ```
 
-💡 **オープンソースが勝利する瞬間を目撃しましょう**
-```
+- REST backendはURL、headless automation、CI、remote machine向け
+- Local Plugin backendはFigma Desktopで現在開いているselection向け
+- downstream処理はbackend-neutralに保つ
 
-## 📋 機能要件
+### 3.3 API callはbudget
 
-### Phase 1: Core MCP Server
-- [ ] **MCP STDIO実装**
-  - Anthropic MCP規格準拠
-  - Figma REST API統合
-  - Personal Access Token認証
+REST callを無制限資源として扱いません。
 
-- [ ] **基本機能**
-  - ファイル/フレーム一覧取得
-  - コンポーネント情報抽出
-  - Design Token変換（W3C準拠）
+- 複数nodeはbatchする
+- 同一in-flight requestは1件へ束ねる
+- bounded memory cacheを使う
+- full fileより選択nodeとdepth制限を優先する
+- 長い`Retry-After`では無駄な自動retryを行わない
+- call countとretryを観測できるようにする
 
-### Phase 2: Advanced Features
-- [ ] **コード生成**
-  - React/Vue/Svelte/HTML対応
-  - Tailwind CSS/styled-components対応
-  - TypeScript型定義生成
+### 3.4 Secretをmodel-visibleにしない
 
-- [ ] **Cursor/Codex統合**
-  - 設定ファイル自動生成
-  - プロジェクト別設定管理
+- PATは環境変数または保護されたlocal configから読む
+- Plugin Bridge tokenとURLはMCP process environmentから読む
+- MCP tool schemaへcredential fieldを出さない
+- CLI、doctor、error messageでsecret値を表示しない
 
-### Phase 3: Developer Experience
-- [ ] **CLI Tool**
-  - `figma-mcp init` - 初期設定
-  - `figma-mcp sync` - デザイントークン同期
-  - `figma-mcp generate` - コード生成
+### 3.5 Fork-first operations
 
-- [ ] **VS Code Extension**
-  - ワンクリックセットアップ
-  - リアルタイムプレビュー
+- operational codeへupstream owner名やdeveloper固有pathを埋め込まない
+- fork networkをread-onlyで監査する
+- unique downstream commitをhuman review候補として出す
+- fork-originated fixのauthor、commit、license provenanceを残す
+- forkへ勝手にpush、merge、issue作成しない
 
-## 🏗️ 技術仕様
+### 3.6 Backward compatibility
 
-### アーキテクチャ
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Claude/Cursor │────│  figma-mcp-free  │────│   Figma API     │
-│   (MCP Client)  │    │  (MCP Server)     │    │ (REST/GraphQL)  │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-```
+- 既存MCP tool名を保つ
+- 新しいinputは原則optional
+- breaking changeはmajor versionとmigration documentを必要とする
+- package、CLI、schema、generated outputの互換性をtestで固定する
 
-### Tech Stack
-- **Language**: TypeScript
-- **Runtime**: Node.js 18+
-- **Protocol**: MCP STDIO
-- **API**: Figma REST API
-- **Package Manager**: npm/pnpm
+## 4. 非目標
 
-### ディレクトリ構造
-```
-figma-mcp-free/
-├── packages/
-│   ├── mcp-server/           # メインMCPサーバー
-│   ├── figma-client/         # Figma APIクライント
-│   ├── design-tokens/        # W3C Design Tokens変換
-│   ├── code-generator/       # コード生成エンジン
-│   └── cli/                  # CLI tool
-├── examples/
-│   ├── cursor-config/        # Cursor設定例
-│   ├── codex-config/         # Claude Codex設定例
-│   └── demo-projects/        # デモプロジェクト
-├── docs/
-│   ├── README.md             # メイン訴求文書
-│   ├── setup-guide.md        # セットアップガイド
-│   ├── why-this-exists.md    # 問題提起文書
-│   ├── api-reference.md      # API仕様
-│   └── comparison.md         # 公式vs無料版比較
-└── tools/
-    ├── health-check.js       # 接続テスト
-    └── migration.js          # 公式からの移行
-```
+現時点では次をscope外とします。
 
-## 📦 パッケージ仕様
+- Figma公式`get_design_context`と同一schemaや同一品質の再現
+- pixel-perfect code compilerの保証
+- Figma objectへのwrite
+- browserやLANへ公開するremote bridge
+- private design snapshotのdisk history
+- 自動npm publish
+- human approvalなしのFigma Community公開
+- `/slides` design nodeのREST対応
+- temporary Images API URLをproduction assetとして管理すること
 
-### Core Package: `@figma-mcp-free/server`
-```typescript
-interface FigmaMCPServer {
-  // MCP Protocol Methods
-  initialize(params: InitializeParams): Promise<void>
-  listTools(): Promise<Tool[]>
-  callTool(request: CallToolRequest): Promise<CallToolResult>
-  
-  // Figma API Methods
-  getFile(fileId: string): Promise<FigmaFile>
-  getComponents(fileId: string): Promise<Component[]>
-  exportDesignTokens(fileId: string): Promise<DesignTokens>
-  generateCode(componentId: string, framework: Framework): Promise<string>
-}
-```
+## 5. Functional requirements
 
-### CLI Package: `figma-mcp-free`
-```bash
-# セットアップ
-figma-mcp-free init
-figma-mcp-free init --token <FIGMA_TOKEN>
+## 5.1 REST client
 
-# 機能実行
-figma-mcp-free sync <FILE_ID>
-figma-mcp-free generate component <COMPONENT_ID> --framework react
-figma-mcp-free export tokens <FILE_ID> --output ./tokens.json
+必須:
 
-# Cursor/Codex統合
-figma-mcp-free setup cursor
-figma-mcp-free setup codex
-```
+- `/file`と`/design` URL解析
+- `node-id=1-2`から`1:2`への正規化
+- file取得
+- component metadata取得
+- frame一覧
+- single node取得
+- multiple node batch取得
+- configurable depth
+- bounded memory cache
+- explicit refresh
+- in-flight deduplication
+- per-attempt timeout
+- short transient retry
+- long `Retry-After`の即時surface
+- plan tier、rate-limit type、upgrade linkのsafe metadata保持
+- request、retry、cache、deduplication stats
 
-## 🎨 UX Requirements
+禁止:
 
-### セットアップフロー
-1. `npm install -g figma-mcp-free`
-2. `figma-mcp-free init`
-3. Figma Personal Access Token入力
-4. Cursor/Codex設定自動生成
-5. 完了
+- PATのerror message混入
+- 429に対する無制限retry
+- nodeごとの不要なserial API loop
+- private responseの自動disk保存
 
-### エラーハンドリング
-- [ ] わかりやすいエラーメッセージ
-- [ ] トークン権限不足の自動検出
-- [ ] 接続テスト機能
+## 5.2 Local Plugin Bridge
 
-## 📊 成功指標
+Server必須:
 
-### Technical KPIs
-- [ ] GitHub Stars > 1000 (6ヶ月以内)
-- [ ] npm週間ダウンロード > 5000
-- [ ] Issue解決率 > 95%
+- bind hostは`127.0.0.1`、`localhost`、`::1`だけ
+- pairing tokenは16文字以上
+- requestごとにauthentication
+- timing-safe token comparison
+- memory snapshotは最新1件
+- default body上限10 MiB
+- default selection上限50件
+- health、get snapshot、post snapshot、clear snapshot endpoint
+- invalid JSON、oversize、unauthorized、missing snapshotの明確なstatus
+- shutdown可能なserver handle
 
-### Impact KPIs
-- [ ] Figma公式の価格政策変更誘発
-- [ ] 他社の類似囲い込み戦略への抑制効果
-- [ ] オープンソース代替案のモデルケース確立
+Client必須:
 
-## 🚀 開発スケジュール
+- defaultでnon-loopback URL拒否
+- HTTP loopbackのみ許可
+- timeout
+- safe error detail
 
-### Week 1-2: Foundation
-- [ ] プロジェクト初期化
-- [ ] MCP Server基本実装
-- [ ] Figma API Client実装
+Figma development plugin必須:
 
-### Week 3-4: Core Features
-- [ ] Design Token変換
-- [ ] 基本的なコード生成
-- [ ] CLI Tool作成
+- Figma発行plugin IDを使うlocal manifest生成
+- production network domainなし
+- development domainはdefault loopback endpointだけ
+- selection change時はsummaryだけ表示
+- `Capture & Send`を押した時だけexportと送信
+- `JSON_REST_V1`でREST-shaped nodeを作る
+- credentialをlocalStorage、sessionStorage、IndexedDBへ保存しない
+- write APIを使わない
 
-### Week 5-6: Integration & Polish
-- [ ] Cursor/Codex統合
-- [ ] ドキュメント整備
-- [ ] テスト実装
+## 5.3 MCP server
 
-### Week 7-8: Launch
-- [ ] パフォーマンス最適化
-- [ ] リリース準備
-- [ ] コミュニティ公開
+REST tools:
 
-## 💡 マーケティング戦略
+- `get_file`
+- `get_nodes`
+- `inspect_selection`
+- `get_components`
+- `list_frames`
+- `export_tokens`
+- `generate_code`
+- `get_cache_stats`
+- `clear_cache`
 
-### コンテンツ戦略
-1. **Problem Statement Blog Post**
-   - "Figmaはいつからオープンソースを有料化したのか"
-   - HackerNews, Reddit投稿
+Local Plugin tools:
 
-2. **Technical Demo Video**
-   - "5分でFigma Dev Modeを無料化する方法"
-   - YouTube, Twitter
+- `get_plugin_bridge_status`
+- `get_current_selection`
+- `inspect_current_selection`
+- `generate_current_selection`
 
-3. **Developer Community Outreach**
-   - Discord/Slack コミュニティでの紹介
-   - 関連OSSプロジェクトとの連携
+Requirement:
 
-### ターゲット
-- Figma Dev Mode課金に不満を持つ開発者
-- オープンソース支持者
-- スタートアップ・個人開発者
+- REST tokenなしでもLocal Plugin toolsが動く
+- Bridge tokenなしでもREST toolsが動く
+- credentialをtool inputへ含めない
+- selection index、depth、children、batch sizeをboundedにする
+- existing REST tool inputを破壊しない
 
-## 🤝 Claude Code 協働フロー
+## 5.4 CLI
 
-### セットアップ
-```bash
-# Claude Codeでプロジェクト作成
-mkdir figma-mcp-free
-cd figma-mcp-free
-claude-code init
+REST CLI:
 
-# 要件に基づく実装開始
-claude-code implement "MCP Server基本実装"
-claude-code implement "Figma API Client"
-```
+- `init`
+- `doctor`
+- `file`
+- `nodes`
+- `frames`
+- `components`
+- `inspect-selection`
+- `export-tokens`
+- `generate`
+- `generate-many`
+- `generate-from-json`
+- `config get token`
+- `config path`
+- `config security`
 
-### 実装優先順位
-1. **packages/mcp-server/** - MCP Protocol実装
-2. **packages/figma-client/** - API wrapper
-3. **packages/cli/** - セットアップ自動化
-4. **docs/README.md** - 訴求文書
-5. **examples/** - 設定例とデモ
+Bridge CLI:
 
-## 🚀 ロードマップ：OSS解放運動
+- `serve`
+- `status`
+- `current`
+- `inspect`
+- `generate`
+- `clear`
 
-### Phase 1: figma-mcp-free (現在)
-- Figmaの囲い込み解除
-- コミュニティ構築
-- 技術実証
+CLI requirement:
 
-### Phase 2: 第2弾プロジェクト (3-6ヶ月後)
-- **supabase-free**: PostgreSQL + PostgREST + Realtime直接構成
-- **docker-desktop-free**: Podman + GUI wrapper
-- **terraform-cloud-free**: OpenTofu + GitOps pipeline
+- relative input pathをcallerのworking directoryから解決
+- invalid framework、depth、indexを早期拒否
+- missing nodeをplaceholder生成せずfail
+- tokenをstdout/stderrへ出さない。ただし`serve`が生成したone-time pairing tokenは、userへpairingさせるため起動時だけ明示する
+- batch generationはmanifestを出す
 
-### Phase 3: 統合フレームワーク (6-12ヶ月後)
-- **oss-liberation-toolkit**: 囲い込み解放用汎用フレームワーク
-- 新しい囲い込みの自動検出・対抗案生成
-- コミュニティ主導の持続的対抗システム
+## 5.5 Selection inspector
 
-### Phase 4: 業界標準変革 (1-2年後)
-- 企業の囲い込み戦略標準的抑制
-- OSS本来の価値体系復活
-- **健全な競争サイクル**の確立
+Compact schemaへ含める:
 
-この要件定義で、Claude Codeと協働してプロジェクトを進めましょう！
+- node ID、name、type
+- size、position
+- Auto Layoutとalignment
+- padding、spacing
+- fills、strokes、opacity
+- text styleとcharacters
+- component information
+- shadows/effects
+- bounded child summary
+- unsupported/truncated理由
 
----
+除外または要約する:
 
-**重要**: このプロジェクトは単なるツール開発ではありません。**業界の悪質な商慣行に対する技術的反抗**であり、**オープンソースの本来の精神を取り戻す運動**です。
+- image bytes
+- raw private image reference
+- vector path全量
+- unbounded child tree
+
+## 5.6 Design Tokens
+
+対象:
+
+- color
+- size
+- spacing
+- typography
+- shadow
+
+Requirement:
+
+- W3C Design Tokensを意識したJSON
+- generated codeでtoken lookupを任意利用可能
+- tokenなしでもgeneratorが動く
+- unknown valueはraw valueへfallback
+
+## 5.7 Code generator
+
+対応:
+
+- React
+- Vue
+- Svelte
+- HTML
+
+Requirement:
+
+- deterministic fixture test
+- malformed nodeでsilent corruptionしない
+- outputをstarter codeと明記
+- real projectのcomponent system、responsive、accessibility、lint、testへの調整を前提とする
+
+## 5.8 Fork intelligence
+
+必須:
+
+- current repositoryがforkならGitHub metadataからparentを特定
+- upstreamならfork一覧をpagination取得
+- compare可能なforkをahead、behind、diverged、in-syncへ分類
+- unique commitを最大件数付きでreport
+- MarkdownとJSON report
+- weekly scheduled workflow
+- read-only permission
+- optional fail-on-ahead
+- contributor provenance記載欄
+
+## 6. Security requirements
+
+### 6.1 PAT storage
+
+- local config directoryはPOSIXで`0700`
+- config fileはPOSIXで`0600`
+- temp fileはexclusive create
+- write後に`fsync`
+- atomic rename
+- existing file modeもread時またはwrite時にharden
+- WindowsではPOSIX modeを偽装せずACL管理であることを説明
+
+### 6.2 Plugin Bridge
+
+- loopback only
+- auth required
+- memory only
+- bounded body
+- bounded selections
+- no write tool
+- explicit capture
+- no credential persistence
+- no credential in MCP schema
+- CSP/network allowlistをstatic check
+
+### 6.3 GitHub Actions
+
+- workflowごとに最小permissions
+- ordinary CIは`contents: read`
+- fork auditはread-only
+- CodeQLだけ`security-events: write`
+- dependency reviewは`contents: read`
+- secret pattern scan
+- owner-specific path scan
+- plugin integrity scan
+- dependency reviewでnew high-severity vulnerabilityを拒否
+- CodeQLでJavaScript/TypeScriptを定期解析
+
+### 6.4 Vulnerability reports
+
+`SECURITY.md`のprivate report routeを使います。public issueへsecret、private URL、snapshot、layer textを貼ってはいけません。
+
+## 7. GitHub repository requirements
+
+Git管理対象:
+
+- CI
+- CodeQL
+- dependency review
+- fork audit
+- Dependabot
+- issue templates
+- PR template
+- security policy
+- contribution policy
+- changelog
+- roadmap
+- package metadata
+- architectureとtroubleshooting
+
+Git外設定:
+
+- About description
+- topics
+- default branch ruleset
+- private vulnerability reporting
+- auto-delete merged branch
+
+推奨値は`docs/repository-settings.md`をcanonicalとします。
+
+## 8. Testing requirements
+
+Pull request merge前に次がPASSすること:
+
+- Node.js 18、20、22 build
+- TypeScript typecheck
+- unit test
+- fixture test
+- URL parsing test
+- 401、403、404、429、5xx error test
+- Retry-After test
+- batch test
+- cache test
+- in-flight dedupe test
+- timeout test
+- PAT redaction test
+- POSIX permission test
+- bridge auth test
+- bridge lifecycle test
+- body/selection limit test
+- MCP schema secret exclusion test
+- plugin integrity static test
+- offline smoke test
+- secret scan
+- fork portability scan
+- package tarball content check
+- CodeQL
+- dependency review when dependencies change
+
+## 9. Release gate
+
+npm publish、GitHub Release、Figma Community公開は外部影響のあるoperationです。human approvalなしで実行しません。
+
+Release前の必須条件:
+
+1. main CI green
+2. CodeQL alert review
+3. dependency review green
+4. package tarball内容確認
+5. package ownership確認
+6. provenance-capable publish設計
+7. changelog更新
+8. version policy決定
+9. clean install test
+10. Figma Desktopでreal selection end-to-end test
+11. rollback手順
+12. credential rotation手順
+13. human approval
+
+## 10. 成功指標
+
+Vanity metricだけで判断しません。
+
+Product indicators:
+
+- setup成功率
+- `doctor`で解決できたerror比率
+- REST call削減率
+- batch利用率
+- Local Plugin selection capture成功率
+- generated outputを実projectへ採用できた割合
+- issueからfixまでの時間
+- fork unique commitのupstream還流件数
+- secret leakage incident 0
+
+Community indicators:
+
+- starとforkの増加
+- external contributor数
+- issue再現情報の質
+- fork auditから見つかった改善数
+- documentation language coverage
+
+## 11. 次の優先候補
+
+P0:
+
+- real Figma Desktop end-to-end test
+- package release dry run
+- About descriptionとtopics設定
+- default branch ruleset適用
+
+P1:
+
+- golden Figma fixture collection
+- variable、gradient、mask、image fillのcoverage拡張
+- bridge pairing UX改善
+- OS credential storeまたはsigned session file検討
+
+P2:
+
+- OAuth adapter
+- Figma Community companionの公開審査
+- additional code framework
+- generated code quality benchmark
+
+write capabilityは別project sliceとして扱い、read-only defaultへ混ぜません。
+
+## 12. 重要な決定記録
+
+- 「公式MCPが有料だから無料完全代替」という初期主張は廃止
+- 「Dev Mode以上」という比較主張は廃止
+- RESTだけのarchitectureからdual backendへ移行
+- freeの意味を「無制限API」ではなく、OSS、read-only、安全なlocal workflowとして定義
+- forkをcopy扱いせず、product discoveryとcontribution surfaceとして扱う
+- external publicationはhuman approval gateを維持
+
+この文書を実装、test、documentation、GitHub運用の基準とします。
