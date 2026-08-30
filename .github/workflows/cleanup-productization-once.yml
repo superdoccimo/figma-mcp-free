@@ -1,0 +1,73 @@
+name: Clean and finalize productization once
+
+on:
+  push:
+    branches:
+      - feat/productization-v1-20260830
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-productization-branch
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7
+        with:
+          ref: feat/productization-v1-20260830
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+
+      - name: Complete transformation if the first run stopped early
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f DO_NOT_COMMIT_CHECK.tmp
+          if [[ -f tools/apply-productization-once.mjs ]]; then
+            node tools/apply-productization-once.mjs
+          fi
+
+      - name: Refresh dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Verify repository and clean packed install
+        run: pnpm release:check
+
+      - name: Remove all one-shot files
+        shell: bash
+        run: |
+          rm -f DO_NOT_COMMIT_CHECK.tmp
+          rm -f tools/apply-productization-once.mjs
+          rm -f .github/workflows/apply-productization-once.yml
+          rm -f .github/workflows/cleanup-productization-once.yml
+
+      - name: Commit final branch state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No cleanup commit was required.'
+          else
+            git commit -m 'feat: finalize single-package productization'
+            git push origin HEAD:feat/productization-v1-20260830
+          fi
