@@ -30,3 +30,6 @@ Thumbs.db
 # Tooling metadata
 .serena/
 
+
+# Local release packaging output
+release-artifacts/
