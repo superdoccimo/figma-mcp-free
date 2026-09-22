@@ -1,6 +1,6 @@
 # Release evidence
 
-Place sanitized Figma Desktop smoke evidence JSON files here (for example `desktop-smoke-windows.json`).
+Store sanitized Figma Desktop smoke evidence JSON files here (for example `desktop-smoke-windows.json`).
 
 Rules:
 
