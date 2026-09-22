@@ -1,0 +1,81 @@
+name: Release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      evidence_path:
+        description: Sanitized Figma Desktop evidence file committed in release-evidence/
+        required: true
+        default: release-evidence/desktop-smoke-windows.json
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run complete source gate
+        run: pnpm check
+
+      - name: Pack standalone candidate
+        run: pnpm dist:pack -- --output release-artifacts
+
+      - name: Clean-install candidate
+        run: pnpm dist:smoke
+
+      - name: Verify Desktop evidence
+        run: pnpm desktop:evidence:verify -- "${{ inputs.evidence_path }}"
+
+      - name: Match evidence to tarball digest
+        env:
+          EVIDENCE_PATH: ${{ inputs.evidence_path }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const evidence = JSON.parse(readFileSync(process.env.EVIDENCE_PATH, 'utf8'));
+          const manifest = JSON.parse(readFileSync('release-artifacts/release-manifest.json', 'utf8'));
+          if (evidence.candidate.tarballSha256 !== manifest.sha256) {
+            throw new Error(`Desktop evidence tarball digest ${evidence.candidate.tarballSha256} does not match ${manifest.sha256}.`);
+          }
+          console.log(`Evidence matches ${manifest.filename} (${manifest.sha256}).`);
+          NODE
+
+      - name: Upload reviewed candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: figma-mcp-free-${{ github.sha }}
+          path: |
+            release-artifacts/*.tgz
+            release-artifacts/release-manifest.json
+            ${{ inputs.evidence_path }}
+          if-no-files-found: error
+          retention-days: 30
