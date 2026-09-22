@@ -40,7 +40,7 @@ importers:
         version: 18.19.130
       tsx:
         specifier: ^4
-        version: 4.23.12
+        version: 4.23.13
       typescript:
         specifier: ^5.4
         version: 5.9.3
@@ -110,7 +110,7 @@ importers:
         version: 10.9.2(@types/node@18.19.130)(typescript@5.9.3)
       tsx:
         specifier: ^4
-        version: 4.23.12
+        version: 4.23.13
       typescript:
         specifier: ^5.4
         version: 5.9.3
@@ -694,8 +694,8 @@ packages:
       '@swc/wasm':
         optional: true
 
-  tsx@4.23.12:
-    resolution: {integrity: sha512-FDf4L4sYzKtzWYhU/Xm0AQFdTjdIxNo9ElTf2mxXM6k8YMHXzYUe4yODVaXP4V9uMFbVg8c0qyBccK2OOxb45Q==}
+  tsx@4.23.13:
+    resolution: {integrity: sha512-BL5MGkRln6aDYhb0xbQlEAGw743BaZYWdbWtdJOBriYJboKgUUYCadFp2/FpBBZquBC/ezNBn7wMMPx7FDZUDw==}
     engines: {node: '>=18.0.0'}
     hasBin: true
 
@@ -1285,7 +1285,7 @@ snapshots:
       v8-compile-cache-lib: 3.0.1
       yn: 3.1.1
 
-  tsx@4.23.12:
+  tsx@4.23.13:
     dependencies:
       esbuild: 0.28.1
     optionalDependencies:
