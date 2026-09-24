@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { cp, mkdir, readFile, rm, stat, writeFile, chmod } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -97,9 +97,16 @@ async function assertBuilt(path, label) {
 }
 
 export async function buildDistribution(options = {}) {
-  const outputRoot = resolve(options.outputRoot ?? join(tmpdir(), `figma-mcp-free-stage-${process.pid}`));
+  let outputRoot;
+  if (options.outputRoot) {
+    outputRoot = resolve(options.outputRoot);
+    await rm(outputRoot, { recursive: true, force: true });
+  } else {
+    // mkdtemp creates a unique directory; avoids CodeQL js/insecure-temporary-file
+    // on predictable tmpdir()+pid paths.
+    outputRoot = mkdtempSync(join(tmpdir(), "figma-mcp-free-stage-"));
+  }
   const packageDir = join(outputRoot, "package");
-  await rm(outputRoot, { recursive: true, force: true });
   await mkdir(packageDir, { recursive: true });
 
   const cliManifest = await readJson(join(cliRoot, "package.json"));
