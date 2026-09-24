@@ -25,7 +25,13 @@ export async function packDistribution(options = {}) {
   const output = execFileSync(
     npmCommand,
     ["pack", "--json", "--ignore-scripts", "--pack-destination", artifactDir],
-    { cwd: staged.packageDir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+    {
+      cwd: staged.packageDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: process.platform === "win32",
+      windowsHide: true
+    }
   );
   const packed = JSON.parse(output);
   if (!Array.isArray(packed) || packed.length !== 1 || !packed[0].filename) {

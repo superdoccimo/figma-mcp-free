@@ -13,6 +13,7 @@ function run(command, args, options = {}) {
     env: options.env ?? process.env,
     encoding: "utf8",
     stdio: options.capture === false ? "inherit" : ["ignore", "pipe", "pipe"],
+    shell: process.platform === "win32" && command === npmCommand,
     windowsHide: true
   });
   if (result.status !== 0) {
