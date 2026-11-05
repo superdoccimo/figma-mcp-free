@@ -45,13 +45,13 @@
   "homepage": "https://github.com/superdoccimo/figma-mcp-free#readme",
   "pnpm": {
     "overrides": {
-      "@hono/node-server": "1.19.15",
-      "body-parser": "2.3.0",
+      "@hono/node-server": "2.1.6",
+      "body-parser": "2.4.0",
       "esbuild": "0.28.1",
-      "fast-uri": "3.1.8",
+      "fast-uri": "3.1.9",
       "hono": "4.13.13",
-      "ip-address": "10.7.3",
-      "qs": "6.16.0"
+      "ip-address": "10.7.4",
+      "qs": "6.16.1"
     }
   }
 }
